@@ -1,0 +1,12 @@
+packages:
+  # 核心包
+  - packages/shared
+  - packages/core
+  - packages/application
+  - packages/model-service
+  - packages/market-client
+  - packages/web
+  # 官方插件（既是 workspace 包，构建产物会被同步到 DATA_ROOT/plugins）
+  - packages/plugins/*
+  # 启动器
+  - apps/*

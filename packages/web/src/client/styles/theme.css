@@ -1,0 +1,173 @@
+/**
+ * NovelAgent 全局主题 —— 暖纸质 · 文艺风
+ * 调色板：米白底 + 深棕文字 + 赭金主色
+ */
+
+:root {
+  /* ===== 调色板 ===== */
+  --paper-bg: #f5efe3;          /* 页面米白 */
+  --paper-bg-soft: #faf6ec;     /* 稍浅米白 */
+  --card-bg: #fffdf7;           /* 卡片暖白 */
+  --ink-strong: #3a2f23;        /* 深棕主文字 */
+  --ink-regular: #5d4f3d;
+  --ink-secondary: #8a7962;
+  --ink-placeholder: #b3a48c;
+  --line-soft: #e6dcc8;         /* 柔和边框 */
+  --line-deep: #d4c5a6;
+
+  --accent: #a9713f;            /* 赭金主色 */
+  --accent-deep: #8a5a2f;
+  --accent-soft: #f4e8d8;
+  --gold: #c9a063;
+
+  /* ===== Element Plus 变量覆写 ===== */
+  --el-color-primary: #a9713f;
+  --el-color-primary-dark-2: #8a5a2f;
+  --el-color-primary-light-3: #bf8f63;
+  --el-color-primary-light-5: #d3ad85;
+  --el-color-primary-light-7: #e6ccb0;
+  --el-color-primary-light-8: #efdcc4;
+  --el-color-primary-light-9: #f7ecdc;
+
+  --el-color-success: #7a9263;
+  --el-color-success-light-9: #eef2e6;
+  --el-color-warning: #c9952e;
+  --el-color-warning-light-9: #faf2de;
+  --el-color-danger: #b85c48;
+  --el-color-danger-light-9: #f8e9e5;
+  --el-color-error: #b85c48;
+  --el-color-info: #8a7962;
+  --el-color-info-light-9: #f1ece1;
+
+  --el-text-color-primary: var(--ink-strong);
+  --el-text-color-regular: var(--ink-regular);
+  --el-text-color-secondary: var(--ink-secondary);
+  --el-text-color-placeholder: var(--ink-placeholder);
+
+  --el-bg-color: var(--card-bg);
+  --el-bg-color-page: var(--paper-bg);
+  --el-bg-color-overlay: #fffdf7;
+  --el-border-color: var(--line-soft);
+  --el-border-color-light: var(--line-soft);
+  --el-border-color-lighter: #efe7d5;
+  --el-border-color-extra-light: #f4edde;
+  --el-fill-color-light: #f4edde;
+  --el-fill-color-lighter: #f8f3e8;
+  --el-fill-color-extra-light: #fbf8f0;
+
+  --el-border-radius-base: 6px;
+  --el-border-radius-small: 4px;
+  --el-font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', sans-serif;
+
+  --el-box-shadow-light: 0 1px 3px rgba(58, 47, 35, 0.06), 0 4px 14px rgba(58, 47, 35, 0.05);
+  --el-box-shadow: 0 4px 18px rgba(58, 47, 35, 0.08);
+}
+
+/* ===== 衬线字体（标题/品牌用） ===== */
+.serif,
+h1, h2, h3 {
+  font-family: Georgia, 'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', serif;
+  letter-spacing: 0.02em;
+}
+
+body {
+  background: var(--paper-bg);
+  color: var(--ink-strong);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ===== Element Plus 组件级微调 ===== */
+
+/* 卡片：暖白底 + 柔和阴影 + 圆角 */
+.el-card {
+  background: var(--card-bg);
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(58, 47, 35, 0.04);
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+.el-card.is-hover-shadow:hover {
+  box-shadow: 0 6px 20px rgba(58, 47, 35, 0.1);
+  transform: translateY(-2px);
+}
+.el-card__header {
+  border-bottom: 1px solid var(--line-soft);
+  padding: 14px 20px;
+}
+
+/* 按钮：主色加深，圆角 */
+.el-button {
+  border-radius: 6px;
+  font-weight: 500;
+}
+.el-button--primary {
+  --el-button-hover-bg-color: var(--accent-deep);
+  --el-button-active-bg-color: var(--accent-deep);
+}
+
+/* 输入框 / 选择器 */
+.el-input__wrapper,
+.el-select__wrapper,
+.el-textarea__inner {
+  background: #fffef9;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px var(--line-deep) inset;
+}
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused,
+.el-textarea__inner:focus {
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+/* 表格 */
+.el-table {
+  --el-table-border-color: var(--line-soft);
+  --el-table-header-bg-color: var(--paper-bg-soft);
+  --el-table-row-hover-bg-color: #faf4e6;
+  background: var(--card-bg);
+  border-radius: 8px;
+}
+.el-table th.el-table__cell {
+  font-family: Georgia, 'Noto Serif SC', 'Songti SC', serif;
+  color: var(--ink-strong);
+}
+
+/* 对话框 */
+.el-dialog {
+  border-radius: 12px;
+  background: var(--card-bg);
+}
+.el-dialog__title {
+  font-family: Georgia, 'Noto Serif SC', 'Songti SC', serif;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+/* 标签 */
+.el-tag {
+  border-radius: 4px;
+}
+
+/* 折叠面板 */
+.el-collapse {
+  --el-collapse-header-bg-color: transparent;
+  --el-collapse-content-bg-color: transparent;
+  border-top-color: var(--line-soft);
+  border-bottom-color: var(--line-soft);
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-deep);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-placeholder);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

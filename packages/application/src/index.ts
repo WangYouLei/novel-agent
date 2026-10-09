@@ -1,0 +1,16 @@
+export { loadAppConfig, type AppConfig } from './config'
+export { getDb, getDbConfig, disconnectDb } from './db'
+export { encryptWithKey, decryptWithKey } from './crypto'
+export { AuthService } from './user/auth.service'
+export { BillingService } from './billing/billing.service'
+export { NovelService } from './novel/novel.service'
+export { StylePackService } from './style-pack/style-pack.service'
+export { BUILTIN_STYLE_PACKS } from './style-pack/builtin-packs'
+export { OutlineService } from './writing/outline.service'
+export { SessionService } from './writing/session.service'
+export { ChatService } from './chat/chat.service'
+export { PluginRegistryService, type PluginManifest } from './plugin/plugin-registry.service'
+export { ModelConfigService } from './model-config/model-config.service'
+
+// 重导出 Prisma（web 层统一从本包引用，避免直接依赖 @prisma/client）
+export { PrismaClient, Prisma } from '@prisma/client'

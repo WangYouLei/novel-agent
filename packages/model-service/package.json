@@ -1,0 +1,20 @@
+{
+  "name": "@novelagent/model-service",
+  "version": "0.1.0",
+  "description": "模型服务：统一调用入口 + 内置免费模型(mock) + 计费 Hook SPI + 模型路由",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@novelagent/core": "workspace:*",
+    "@novelagent/shared": "workspace:*",
+    "cordis": "^3.18.1"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.0",
+    "vitest": "^2.1.0"
+  }
+}

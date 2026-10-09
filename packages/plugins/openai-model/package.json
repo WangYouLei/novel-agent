@@ -1,0 +1,27 @@
+{
+  "name": "@novelagent/plugin-openai-model",
+  "version": "1.0.0",
+  "description": "示例模型插件：OpenAI 兼容接口的模型提供者（用户自己的 API Key，不消耗积分）",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup"
+  },
+  "novelagent": {
+    "id": "openai-model",
+    "displayName": "OpenAI 模型",
+    "type": "model",
+    "description": "OpenAI 兼容接口的模型提供者，使用用户自己配置的 API Key",
+    "author": "novelagent",
+    "dependencies": {},
+    "optionalDependencies": {},
+    "configSchema": []
+  },
+  "dependencies": {
+    "@novelagent/core": "workspace:*",
+    "@novelagent/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.0"
+  }
+}

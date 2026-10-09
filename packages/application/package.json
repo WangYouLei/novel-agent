@@ -1,0 +1,28 @@
+{
+  "name": "@novelagent/application",
+  "version": "0.1.0",
+  "description": "应用服务层：Prisma 数据模型 + 领域服务（用户/计费/小说/风格包/插件记录）",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "prisma generate && tsup",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@novelagent/core": "workspace:*",
+    "@novelagent/shared": "workspace:*",
+    "@prisma/client": "^6.19.3",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.7",
+    "prisma": "^6.19.3",
+    "tsup": "^8.3.0",
+    "vitest": "^2.1.0"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "@novelagent/core",
+  "version": "0.1.0",
+  "description": "插件内核：Cordis 封装 + 扩展点接口 + 事件定义",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@novelagent/shared": "workspace:*",
+    "cordis": "^3.18.1"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.0",
+    "vitest": "^2.1.0"
+  }
+}

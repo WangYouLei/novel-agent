@@ -1,0 +1,23 @@
+{
+  "name": "@novelagent/launcher",
+  "version": "0.1.0",
+  "description": "启动器：DATA_ROOT 初始化、内置插件/风格包 seed、启动 Web 服务",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@novelagent/application": "workspace:*",
+    "@novelagent/core": "workspace:*",
+    "@novelagent/market-client": "workspace:*",
+    "@novelagent/model-service": "workspace:*",
+    "@novelagent/shared": "workspace:*",
+    "@novelagent/web": "workspace:*",
+    "cordis": "^3.18.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  }
+}

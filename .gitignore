@@ -1,0 +1,28 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.local
+
+# pnpm 本地存储缓存
+.pnpm-store/
+.pnpm-cache/
+
+# npm 本地缓存
+.npm-cache/
+
+# 运行时数据目录（单机版数据不入库）
+data/
+.novelagent/
+
+# 日志
+logs/
+*.log
+
+# 测试
+coverage/
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json

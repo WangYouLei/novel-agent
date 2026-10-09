@@ -1,0 +1,430 @@
+// Prisma 数据模型 —— 与 docs/tech-design.md 7.3 节保持一致
+// 说明：SQLite 的 Json/Enum 类型需要 Prisma ORM >= 6.2（文档 5.x 与 schema 冲突，按 6.x 对齐）
+// 相比文档原文，仅补齐 Prisma 要求的双向关系反向字段（如 Novel.characterRelations、User.modelConfigs）
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ========== 7.3.1 用户与计费 ==========
+
+model User {
+  id             String    @id @default(cuid())
+  username       String    @unique
+  email          String?   @unique
+  passwordHash   String?
+  avatar         String?
+  role           UserRole  @default(USER)
+  vipExpiresAt   DateTime?
+  credits        Int       @default(0)
+  dailyCredits   Int       @default(0)
+  lastDailyClaim DateTime?
+  deleted        Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  novels           Novel[]
+  stylePacks       StylePack[]
+  installedPlugins InstalledPlugin[]
+  modelConfigs     ModelConfig[]
+  sessions         WritingSession[]
+  creditLogs       CreditLog[]
+  modelCalls       ModelCall[]
+  chatSessions     ChatSession[]
+}
+
+enum UserRole {
+  USER
+  VIP
+  ADMIN
+}
+
+model CreditLog {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id])
+  amount      Int
+  type        CreditLogType
+  description String?
+  modelCallId String?
+  createdAt   DateTime      @default(now())
+
+  @@index([userId, createdAt])
+}
+
+enum CreditLogType {
+  DAILY_GIFT
+  MODEL_CALL
+  VIP_BENEFIT
+  REFUND
+  ADMIN_ADJUST
+}
+
+// ========== 7.3.2 小说与章节 ==========
+
+model Novel {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id])
+  title       String
+  description String?
+  coverImage  String?
+  genre       String?
+  stylePackId String?
+  stylePack   StylePack?  @relation(fields: [stylePackId], references: [id])
+  status      NovelStatus @default(DRAFT)
+  wordCount   Int         @default(0)
+  deleted     Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  chapters           Chapter[]
+  characters         Character[]
+  characterRelations CharacterRelation[]
+  worldSettings      WorldSetting[]
+  outlines           Outline[]
+  sessions           WritingSession[]
+  chatSessions       ChatSession[]
+
+  @@index([userId])
+}
+
+enum NovelStatus {
+  DRAFT
+  ONGOING
+  COMPLETED
+  ARCHIVED
+}
+
+model Chapter {
+  id          String        @id @default(cuid())
+  novelId     String
+  novel       Novel         @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  // 排序字段：初始步长 100（追加 = max + 100，插入 = 前后中点），展示序号查询时动态生成（ADR-010）
+  sortOrder   Int
+  title       String
+  summary     String?
+  content     String?
+  wordCount   Int           @default(0)
+  status      ChapterStatus @default(DRAFT)
+  stylePackId String?
+  stylePack   StylePack?    @relation(fields: [stylePackId], references: [id])
+  deleted     Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([novelId, sortOrder])
+}
+
+enum ChapterStatus {
+  DRAFT
+  OUTLINED
+  WRITING
+  REVIEWING
+  PUBLISHED
+}
+
+// ========== 7.3.3 风格包 ==========
+
+model StylePack {
+  id             String           @id @default(cuid())
+  userId         String?
+  user           User?            @relation(fields: [userId], references: [id])
+  /// 内置风格包固定标识（xuanhuan/dushi/scifi...），用于启动 seed 幂等与插件兼容性判断
+  builtinKey     String?
+  name           String
+  description    String?
+  coverImage     String?
+  sourceType     StylePackSource
+  generatedBy    String?
+  sourcePluginId String?
+  version        String           @default("1.0.0")
+  modifiable     Boolean          @default(true)
+  content        Json
+  forkedFromId   String?
+  forkedFrom     StylePack?       @relation("StylePackFork", fields: [forkedFromId], references: [id])
+  forks          StylePack[]      @relation("StylePackFork")
+  deleted        Boolean          @default(false)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  novels   Novel[]
+  chapters Chapter[]
+
+  @@index([userId])
+  @@index([sourceType])
+  @@unique([builtinKey])
+}
+
+enum StylePackSource {
+  BUILTIN
+  USER_GENERATED
+  THIRD_PARTY
+}
+
+// ========== 7.3.4 设定管理 ==========
+
+model Character {
+  id          String          @id @default(cuid())
+  novelId     String
+  novel       Novel           @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  name        String
+  alias       String?
+  avatar      String?
+  role        CharacterRole
+  gender      String?
+  age         String?
+  description String?
+  profile     Json?
+  sortOrder   Int             @default(0)
+  deleted     Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  relationsFrom CharacterRelation[] @relation("RelationFrom")
+  relationsTo   CharacterRelation[] @relation("RelationTo")
+
+  @@index([novelId])
+}
+
+enum CharacterRole {
+  PROTAGONIST
+  DEUTERAGONIST
+  ANTAGONIST
+  SUPPORTING
+  MINOR
+  NARRATOR
+}
+
+// 角色关系表：单向存储（A→B），查全部关系时双向 UNION（见文档 7.3.4 注释）
+model CharacterRelation {
+  id               String    @id @default(cuid())
+  novelId          String
+  novel            Novel     @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  fromCharacterId  String
+  fromCharacter    Character @relation("RelationFrom", fields: [fromCharacterId], references: [id], onDelete: Cascade)
+  toCharacterId    String
+  toCharacter      Character @relation("RelationTo", fields: [toCharacterId], references: [id], onDelete: Cascade)
+  relationType     String
+  description      String?
+  createdAt        DateTime  @default(now())
+
+  @@unique([fromCharacterId, toCharacterId, relationType])
+  @@index([novelId])
+  @@index([toCharacterId])
+}
+
+model WorldSetting {
+  id          String        @id @default(cuid())
+  novelId     String
+  novel       Novel         @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  category    String
+  name        String
+  description String?
+  icon        String?
+  details     Json?
+  parentId    String?
+  parent      WorldSetting? @relation("WorldSettingTree", fields: [parentId], references: [id])
+  children    WorldSetting[] @relation("WorldSettingTree")
+  sortOrder   Int           @default(0)
+  deleted     Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([novelId, category])
+}
+
+// ========== 7.3.5 大纲 ==========
+
+model Outline {
+  id               String   @id @default(cuid())
+  novelId          String
+  novel            Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  version          Int      @default(1)
+  isActive         Boolean  @default(true)
+  structure        Json
+  generatedBy      String?
+  generationParams Json?
+  deleted          Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([novelId, isActive])
+}
+
+// ========== 7.3.6 插件管理与模型配置 ==========
+
+model InstalledPlugin {
+  id          String       @id @default(cuid())
+  userId      String
+  user        User         @relation(fields: [userId], references: [id])
+  pluginId    String
+  name        String
+  version     String
+  author      String?
+  description String?
+  type        PluginType
+  source      PluginSource
+  installPath String?
+  status      PluginStatus @default(INSTALLED)
+  enabled     Boolean      @default(true)
+  config      Json?
+  dependencies Json?
+  installedAt DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  modelConfigs ModelConfig[]
+
+  @@unique([userId, pluginId])
+  @@index([userId, status])
+}
+
+enum PluginType {
+  FEATURE
+  MODEL
+  STYLE_GENERATOR
+}
+
+enum PluginSource {
+  BUILTIN
+  LOCAL
+  MARKETPLACE
+}
+
+// 用户模型配置表：用户自定义厂商模型的 API Key / 端点 / 模型名（API Key 加密存储，见文档 7.3.6 注释）
+model ModelConfig {
+  id                String          @id @default(cuid())
+  userId            String
+  user              User            @relation(fields: [userId], references: [id])
+  installedPluginId String
+  installedPlugin   InstalledPlugin @relation(fields: [installedPluginId], references: [id])
+  name              String
+  baseUrl           String?
+  apiKeyEncrypted   String
+  modelName         String
+  isDefault         Boolean         @default(false)
+  extraParams       Json?
+  deleted           Boolean         @default(false)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([userId])
+  @@index([userId, isDefault])
+}
+
+enum PluginStatus {
+  INSTALLED
+  RESOLVED
+  STARTED
+  STOPPED
+  ERROR
+}
+
+// ========== 7.3.7 创作会话与模型调用 ==========
+
+model WritingSession {
+  id              String             @id @default(cuid())
+  userId          String
+  user            User               @relation(fields: [userId], references: [id])
+  novelId         String?
+  novel           Novel?             @relation(fields: [novelId], references: [id])
+  sessionType     WritingSessionType
+  featurePluginId String?
+  status          SessionStatus      @default(ACTIVE)
+  context         Json?
+  inputSummary    String?
+  outputSummary   String?
+  createdAt       DateTime           @default(now())
+  endedAt         DateTime?
+  modelCalls      ModelCall[]
+
+  @@index([userId, createdAt])
+}
+
+enum WritingSessionType {
+  OUTLINE_GEN
+  CHAPTER_WRITE
+  POLISH
+  CONTINUE
+  STYLE_EXTRACT
+  CHARACTER_GEN
+  CUSTOM
+}
+
+enum SessionStatus {
+  ACTIVE
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+// 摘要化存储：input/output 只存前 500 字 + token 统计，保留 90 天（ADR-011）
+model ModelCall {
+  id            String         @id @default(cuid())
+  sessionId     String
+  session       WritingSession @relation(fields: [sessionId], references: [id])
+  userId        String
+  user          User           @relation(fields: [userId], references: [id])
+  modelProvider String
+  modelName     String
+  inputTokens   Int            @default(0)
+  outputTokens  Int            @default(0)
+  inputExcerpt  String?
+  outputExcerpt String?
+  creditCost    Int            @default(0)
+  status        CallStatus     @default(SUCCESS)
+  errorMessage  String?
+  durationMs    Int?
+  createdAt     DateTime       @default(now())
+
+  @@index([sessionId])
+  @@index([userId, createdAt])
+}
+
+enum CallStatus {
+  SUCCESS
+  FAILED
+  STREAMING
+  CANCELLED
+}
+
+// ========== 对话会话（对话式插件入口） ==========
+
+model ChatSession {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id])
+  novelId   String?
+  novel     Novel?        @relation(fields: [novelId], references: [id])
+  title     String        @default("新对话")
+  messages  ChatMessage[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([userId, createdAt])
+}
+
+model ChatMessage {
+  id          String      @id @default(cuid())
+  sessionId   String
+  session     ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role        ChatRole
+  content     String
+  /** 附件摘要 [{ name, chars }]，全文不落库 */
+  attachments Json?
+  /** 插件调用记录（assistant 消息）：pluginId/input/resultKind/result */
+  toolCall    Json?
+  createdAt   DateTime    @default(now())
+
+  @@index([sessionId, createdAt])
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+}

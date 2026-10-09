@@ -1,0 +1,64 @@
+{
+  "name": "@novelagent/plugin-style-generator",
+  "version": "1.1.0",
+  "description": "风格生成插件：分析用户上传的小说文本，提取可复用的写作风格包",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup"
+  },
+  "novelagent": {
+    "id": "style-generator",
+    "displayName": "小说风格提取",
+    "type": "style-generator",
+    "description": "分析用户上传的小说文本，提取写作风格生成可复用的风格包",
+    "author": "novelagent",
+    "dependencies": {
+      "model-service": ">=1.0.0"
+    },
+    "optionalDependencies": {},
+    "inputSchema": [
+      {
+        "key": "sourceText",
+        "name": "小说文本",
+        "type": "file",
+        "required": true,
+        "fileAccept": ".txt,.md",
+        "description": "用于提取写作风格的小说原文（纯文本）"
+      }
+    ],
+    "configSchema": [
+      {
+        "key": "maxSourceChars",
+        "name": "分析文本上限（字）",
+        "type": "number",
+        "default": 8000,
+        "min": 500,
+        "max": 50000
+      },
+      {
+        "key": "sampleCount",
+        "name": "示例句数量",
+        "type": "number",
+        "default": 5,
+        "min": 2,
+        "max": 10
+      },
+      {
+        "key": "vocabCount",
+        "name": "风格词数量",
+        "type": "number",
+        "default": 10,
+        "min": 3,
+        "max": 20
+      }
+    ]
+  },
+  "dependencies": {
+    "@novelagent/core": "workspace:*",
+    "@novelagent/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.0"
+  }
+}
