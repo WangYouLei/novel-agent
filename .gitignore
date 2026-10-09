@@ -8,6 +8,9 @@ dist/
 .pnpm-store/
 .pnpm-cache/
 
+# 锁文件（不入库）
+pnpm-lock.yaml
+
 # npm 本地缓存
 .npm-cache/
 
