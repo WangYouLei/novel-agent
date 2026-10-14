@@ -30,6 +30,10 @@
             <el-icon><Grid /></el-icon>
             <span>插件管理</span>
           </el-menu-item>
+          <el-menu-item index="/market">
+            <el-icon><ShoppingCart /></el-icon>
+            <span>插件市场</span>
+          </el-menu-item>
           <el-menu-item index="/models">
             <el-icon><Cpu /></el-icon>
             <span>模型设置</span>
@@ -97,7 +101,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Coin, ArrowDown, ChatDotRound, Notebook, MagicStick, Grid, Cpu, Brush } from '@element-plus/icons-vue'
+import { Coin, ArrowDown, ChatDotRound, Notebook, MagicStick, Grid, Cpu, Brush, ShoppingCart } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import type { CreditLogDto } from '@novelagent/shared'
 import { CREDIT_POLICY } from '@novelagent/shared'
@@ -118,6 +122,7 @@ const pageTitle = computed(
       '/styles': '风格包',
       '/outline': '大纲生成',
       '/plugins': '插件管理',
+      '/market': '插件市场',
       '/models': '模型设置',
     })[route.path] ?? '',
 )

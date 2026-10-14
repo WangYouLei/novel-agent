@@ -3,3 +3,6 @@ export const APP_CONFIG = Symbol('APP_CONFIG')
 
 /** PrismaClient 注入 token */
 export const PRISMA = Symbol('PRISMA')
+
+/** 市场客户端（HttpMarketplaceClient）注入 token */
+export const MARKET_CLIENT = Symbol('MARKET_CLIENT')

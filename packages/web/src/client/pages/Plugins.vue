@@ -47,6 +47,17 @@
             >
               配置
             </el-button>
+            <!-- 卸载（内置插件随启动同步维护，不提供卸载） -->
+            <el-button
+              v-if="plugin.source !== 'BUILTIN'"
+              size="small"
+              type="danger"
+              plain
+              :loading="uninstalling === plugin.pluginId"
+              @click="uninstall(plugin)"
+            >
+              卸载
+            </el-button>
           </div>
         </el-card>
       </el-col>
@@ -90,7 +101,7 @@
 
 <script setup lang="ts">
 import { inject, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { get, post, put } from '@/api/http'
 import type { PluginConfigField, PluginDto } from '@novelagent/shared'
 import type { Context } from 'cordis'
@@ -98,6 +109,7 @@ import type { PluginStatusChangedEvent } from '@novelagent/shared'
 
 const plugins = ref<PluginDto[]>([])
 const toggling = ref('')
+const uninstalling = ref('')
 const savingConfig = ref(false)
 const bridgeCtx = inject<Context>('bridge')
 
@@ -137,6 +149,26 @@ async function toggle(plugin: PluginDto, enabled: boolean) {
     ElMessage.error((err as Error).message)
   } finally {
     toggling.value = ''
+  }
+}
+
+/** 卸载插件：删除目录 + 热重载，需二次确认 */
+async function uninstall(plugin: PluginDto) {
+  const confirmed = await ElMessageBox.confirm(
+    `确定卸载【${plugin.displayName}】吗？插件目录与其配置将被删除，且立即生效。`,
+    '卸载插件',
+    { type: 'warning', confirmButtonText: '卸载', cancelButtonText: '取消' },
+  ).catch(() => false)
+  if (!confirmed) return
+  uninstalling.value = plugin.pluginId
+  try {
+    await post(`/api/plugins/${plugin.pluginId}/uninstall`)
+    ElMessage.success(`${plugin.displayName} 已卸载`)
+    await load()
+  } catch (err) {
+    ElMessage.error((err as Error).message)
+  } finally {
+    uninstalling.value = ''
   }
 }
 

@@ -1,18 +1,103 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import os from 'node:os'
 import { createRequire } from 'node:module'
 import { readManifest } from './local-repo'
+import { findPluginRootDir, unzipToDir } from './zip'
 import type { PluginManifest } from './manifest'
 
 /**
  * 插件安装/同步（文档 6.2 目录布局的维护者）
- * MVP：将 monorepo 内构建好的内置插件同步到 DATA_ROOT/plugins/
+ * - syncBuiltinPlugins：启动时将 monorepo 内置插件同步到 DATA_ROOT/plugins/
+ * - installPluginFromDirectory / installPluginFromZip：市场与本地 zip 的按需安装
+ * - uninstallPlugin：卸载非内置插件（删除目录，配合宿主热重载）
  * 并保证插件运行时可解析宿主的共享依赖（@novelagent/core / cordis）
  */
 
 export interface SyncResult {
   synced: string[]
   unchanged: string[]
+}
+
+/** 按需安装来源（DB InstalledPlugin.source 对应值） */
+export type PluginInstallSource = 'LOCAL' | 'MARKETPLACE'
+
+/** 读取插件安装元数据中的来源标识（.meta/source），目录缺失时返回 undefined */
+export function readInstallSource(pluginDir: string): string | undefined {
+  try {
+    return fs.readFileSync(path.join(pluginDir, '.meta', 'source'), 'utf-8').trim()
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * 从源目录安装插件（市场下载解压后 / 本地目录）：
+ * 校验清单 → 覆盖目标目录（package.json + dist）→ 写 .meta 元数据
+ * @returns 安装后的清单（installPath 指向目标目录）
+ */
+export function installPluginFromDirectory(
+  sourceDir: string,
+  pluginsDir: string,
+  source: PluginInstallSource,
+  log: (msg: string) => void = console.log,
+): PluginManifest {
+  const manifest = readManifest(sourceDir)
+  if (!manifest) throw new Error(`插件源目录缺少 package.json：${sourceDir}`)
+
+  const targetDir = path.join(pluginsDir, manifest.pluginId)
+  fs.rmSync(targetDir, { recursive: true, force: true })
+  fs.mkdirSync(targetDir, { recursive: true })
+  fs.copyFileSync(path.join(sourceDir, 'package.json'), path.join(targetDir, 'package.json'))
+  fs.cpSync(path.join(sourceDir, 'dist'), path.join(targetDir, 'dist'), { recursive: true })
+
+  // 安装元数据（文档 6.2 .meta/）
+  const metaDir = path.join(targetDir, '.meta')
+  fs.mkdirSync(metaDir, { recursive: true })
+  fs.writeFileSync(path.join(metaDir, 'installedAt'), new Date().toISOString())
+  fs.writeFileSync(path.join(metaDir, 'source'), source.toLowerCase())
+
+  log(`[installer] 插件已安装（${source}）：${manifest.pluginId}@${manifest.version}`)
+  // 重新读取以返回 installPath 指向目标目录的清单
+  const installed = readManifest(targetDir)
+  if (!installed) throw new Error(`安装后清单读取失败：${manifest.pluginId}`)
+  return installed
+}
+
+/**
+ * 从 zip 包安装插件（本地 zip 上传场景）：
+ * 解压到临时目录 → 定位插件根 → 安装 → 清理临时目录
+ */
+export function installPluginFromZip(
+  zipBuffer: Buffer,
+  pluginsDir: string,
+  source: PluginInstallSource,
+  log: (msg: string) => void = console.log,
+): PluginManifest {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'novelagent-install-'))
+  try {
+    unzipToDir(zipBuffer, tempDir)
+    const pluginRoot = findPluginRootDir(tempDir)
+    return installPluginFromDirectory(pluginRoot, pluginsDir, source, log)
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true })
+  }
+}
+
+/**
+ * 卸载插件：删除 DATA_ROOT/plugins/<pluginId> 目录（宿主随后热重载）
+ * 内置插件（.meta/source=builtin，由启动同步维护）拒绝卸载
+ */
+export function uninstallPlugin(pluginsDir: string, pluginId: string, log: (msg: string) => void = console.log): void {
+  const pluginDir = path.join(pluginsDir, pluginId)
+  if (!fs.existsSync(pluginDir)) {
+    throw new Error(`插件 ${pluginId} 不存在，无法卸载`)
+  }
+  if (readInstallSource(pluginDir) === 'builtin') {
+    throw new Error('内置插件不可卸载（随宿主启动同步维护）')
+  }
+  fs.rmSync(pluginDir, { recursive: true, force: true })
+  log(`[installer] 插件已卸载：${pluginId}`)
 }
 
 /**

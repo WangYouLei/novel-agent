@@ -12,6 +12,7 @@ export const router = createRouter({
     { path: '/styles', component: () => import('./pages/StylePacks.vue') },
     { path: '/outline', component: () => import('./pages/OutlineGenerator.vue') },
     { path: '/plugins', component: () => import('./pages/Plugins.vue') },
+    { path: '/market', component: () => import('./pages/Market.vue') },
     { path: '/models', component: () => import('./pages/ModelSettings.vue') },
   ],
 })

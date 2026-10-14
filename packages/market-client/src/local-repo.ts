@@ -34,7 +34,10 @@ export function readManifest(pluginDir: string): PluginManifest | undefined {
   const pkgPath = path.join(pluginDir, 'package.json')
   if (!fs.existsSync(pkgPath)) return undefined
 
-  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as {
+  // 兼容 Windows 工具写出的 UTF-8 BOM（第三方插件包常见）
+  const pkg = JSON.parse(
+    fs.readFileSync(pkgPath, 'utf-8').replace(/^\uFEFF/, ''),
+  ) as {
     name?: string
     version?: string
     main?: string

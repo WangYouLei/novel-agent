@@ -1,43 +1,22 @@
 /**
- * 远程市场客户端（文档 6.7：MVP 为 Mock 实现，全部返回空，后续替换为 HttpMarketplaceClient）
+ * 远程市场客户端契约（文档 6.7）
+ * DTO 类型单源定义于 @novelagent/shared（前端共用），此处保留原别名以兼容既有引用
  */
-export interface PluginSummary {
-  pluginId: string
-  displayName: string
-  version: string
-  type: string
-  description?: string
-  author?: string
-  downloads: number
-}
+import type {
+  MarketCategoryDto,
+  MarketPage,
+  MarketPluginDetailDto,
+  MarketPluginDto,
+  MarketPluginVersionDto,
+  MarketUpdateDto,
+} from '@novelagent/shared'
 
-export interface PluginDetail extends PluginSummary {
-  configSchema: unknown[]
-  dependencies: Record<string, string>
-  readme?: string
-}
-
-export interface PluginVersion {
-  version: string
-  publishedAt: string
-  changelog?: string
-}
-
-export interface PluginUpdate {
-  pluginId: string
-  currentVersion: string
-  latestVersion: string
-}
-
-export interface PluginCategory {
-  id: string
-  name: string
-}
-
-export interface Page<T> {
-  items: T[]
-  total: number
-}
+export type PluginSummary = MarketPluginDto
+export type PluginDetail = MarketPluginDetailDto
+export type PluginVersion = MarketPluginVersionDto
+export type PluginUpdate = MarketUpdateDto
+export type PluginCategory = MarketCategoryDto
+export type Page<T> = MarketPage<T>
 
 export interface MarketplaceClient {
   searchPlugins(keyword: string, category?: string, page?: number, size?: number): Promise<Page<PluginSummary>>
@@ -46,10 +25,12 @@ export interface MarketplaceClient {
   downloadPlugin(pluginId: string, version: string): Promise<string>
   checkUpdates(installed: Array<{ pluginId: string; version: string }>): Promise<PluginUpdate[]>
   getCategories(): Promise<PluginCategory[]>
-  isAvailable(): boolean
+  isAvailable(): Promise<boolean>
+  /** 市场服务地址（状态展示/错误提示用） */
+  getBaseUrl(): string
 }
 
-/** Mock 实现：市场服务端未部署前一律返回空结果 */
+/** Mock 实现：市场服务端未部署前一律返回空结果（downloadPlugin 语义见 HttpMarketplaceClient） */
 export class MockMarketplaceClient implements MarketplaceClient {
   async searchPlugins(): Promise<Page<PluginSummary>> {
     return { items: [], total: 0 }
@@ -69,7 +50,10 @@ export class MockMarketplaceClient implements MarketplaceClient {
   async getCategories(): Promise<PluginCategory[]> {
     return []
   }
-  isAvailable(): boolean {
+  async isAvailable(): Promise<boolean> {
     return false
+  }
+  getBaseUrl(): string {
+    return ''
   }
 }

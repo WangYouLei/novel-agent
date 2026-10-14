@@ -31,13 +31,14 @@ NovelAgent 是一个**可插拔的 AI 小说创作平台**。核心创作能力�
 ```
 novel-agent/
 ├── apps/
-│   └── launcher/            # 应用启动器
+│   ├── launcher/            # 应用启动器
+│   └── marketplace/         # 插件市场服务（独立进程：发布/浏览/下载插件）
 └── packages/
     ├── core/                # 插件内核（Cordis 封装、扩展点、事件、服务声明）
     ├── shared/              # 共享类型与工具库
     ├── application/         # 业务服务层（小说、写作、大纲、风格包、计费、用户）
     ├── model-service/       # 模型服务（内置模型接入、风格分析）
-    ├── market-client/       # 插件市场客户端（本地仓库、安装器）
+    ├── market-client/       # 插件市场客户端（本地仓库、安装器、HTTP 市场客户端）
     ├── web/                 # Web 端（Nest.js 服务端 + Vue 3 客户端）
     └── plugins/             # 官方插件（openai-model、outline-generator、style-generator）
 ```
@@ -56,9 +57,14 @@ pnpm build
 # 启动开发
 pnpm dev
 
+# 启动插件市场服务（可选，默认 3100 端口；启动后可在「插件市场」页浏览/安装/更新插件）
+pnpm market:dev
+
 # 数据库迁移
 pnpm db:migrate
 ```
+
+> 插件市场服务未启动时，市场页显示离线提示，仍可通过「插件市场」页的「安装本地插件」上传 zip 直接安装；第三方插件 zip 可经 `POST /api/market/publish` 发布到市场（字段名 `file`）。
 
 ## License
 

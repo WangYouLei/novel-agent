@@ -5,6 +5,7 @@ import { NovelController } from './novels/novel.controller'
 import { StylePackController } from './style-packs/style-pack.controller'
 import { PluginController } from './plugins/plugin.controller'
 import { ModelConfigController } from './model-configs/model-config.controller'
+import { MarketController } from './market/market.controller'
 import { WritingController } from './writing/writing.controller'
 import { ChatController } from './chat/chat.controller'
 import { ChatDispatcherService } from './chat/chat-dispatcher.service'
@@ -19,6 +20,7 @@ import { BridgeGateway } from './gateway/bridge.gateway'
     NovelController,
     StylePackController,
     PluginController,
+    MarketController,
     ModelConfigController,
     WritingController,
     ChatController,

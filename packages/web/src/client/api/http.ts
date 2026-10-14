@@ -14,8 +14,10 @@ export class ApiError extends Error {
 /** fetch 封装：自动带 JWT、统一解析 ApiResponse、401 跳登录 */
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const auth = useAuthStore()
+  // FormData 上传不设 Content-Type（由浏览器携带 multipart boundary）
+  const isForm = init.body instanceof FormData
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(isForm ? {} : { 'Content-Type': 'application/json' }),
     ...(init.headers as Record<string, string>),
   }
   if (auth.token) headers.Authorization = `Bearer ${auth.token}`
@@ -40,3 +42,6 @@ export const post = <T>(path: string, data?: unknown) =>
 export const put = <T>(path: string, data?: unknown) =>
   request<T>(path, { method: 'PUT', body: JSON.stringify(data) })
 export const del = <T>(path: string) => request<T>(path, { method: 'DELETE' })
+/** multipart 表单上传（如本地插件 zip 安装） */
+export const postForm = <T>(path: string, form: FormData) =>
+  request<T>(path, { method: 'POST', body: form })

@@ -31,13 +31,14 @@ NovelAgent is a **pluggable AI-powered novel writing platform**. Core writing ca
 ```
 novel-agent/
 ├── apps/
-│   └── launcher/            # App launcher
+│   ├── launcher/            # App launcher
+│   └── marketplace/         # Plugin marketplace service (standalone process: publish/browse/download)
 └── packages/
     ├── core/                # Plugin kernel (Cordis wrapper, extension points, events, services)
     ├── shared/              # Shared types and utilities
     ├── application/         # Application services (novels, writing, outlines, style packs, billing, users)
     ├── model-service/       # Model service (built-in model access, style analysis)
-    ├── market-client/       # Plugin marketplace client (local repo, installer)
+    ├── market-client/       # Plugin marketplace client (local repo, installer, HTTP marketplace client)
     ├── web/                 # Web app (Nest.js server + Vue 3 client)
     └── plugins/             # Official plugins (openai-model, outline-generator, style-generator)
 ```
@@ -55,6 +56,9 @@ pnpm build
 
 # Start development
 pnpm dev
+
+# Start the plugin marketplace service (optional, port 3100 by default)
+pnpm market:dev
 
 # Run database migrations
 pnpm db:migrate

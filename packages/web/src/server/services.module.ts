@@ -14,8 +14,9 @@ import {
   type AppConfig,
   type PrismaClient,
 } from '@novelagent/application'
+import { HttpMarketplaceClient, type MarketplaceClient } from '@novelagent/market-client'
 import { CordisHost } from './cordis.host'
-import { APP_CONFIG, PRISMA } from './common/tokens'
+import { APP_CONFIG, MARKET_CLIENT, PRISMA } from './common/tokens'
 
 /**
  * application 领域服务注册（全局模块）
@@ -75,6 +76,14 @@ const providers: Provider[] = [
     inject: [PRISMA, APP_CONFIG],
     useFactory: (prisma: PrismaClient, config: AppConfig) => new ModelConfigService(prisma, config),
   },
+  {
+    // 插件市场客户端：默认连本机独立市场服务，可用 MARKETPLACE_URL 覆盖指向远程市场
+    provide: MARKET_CLIENT,
+    useFactory: (): MarketplaceClient =>
+      new HttpMarketplaceClient({
+        baseUrl: process.env.MARKETPLACE_URL ?? 'http://127.0.0.1:3100',
+      }),
+  },
   CordisHost,
 ]
 
@@ -94,6 +103,7 @@ const providers: Provider[] = [
     ChatService,
     ModelConfigService,
     CordisHost,
+    MARKET_CLIENT,
   ],
 })
 export class ServicesModule {}

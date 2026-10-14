@@ -38,6 +38,8 @@ export class CordisHost implements OnModuleInit, OnModuleDestroy {
 
   /** pluginId → 运行状态 */
   readonly runtimes = new Map<string, PluginRuntime>()
+  /** pluginId → 卸载回调（Cordis ForkScope.dispose，回滚插件全部副作用） */
+  private readonly disposers = new Map<string, () => boolean>()
   private resolveResult: ResolveResult = { loadOrder: [], skipped: [], cyclic: [] }
 
   constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {}
@@ -126,7 +128,8 @@ export class CordisHost implements OnModuleInit, OnModuleDestroy {
         throw new Error('入口未导出插件类（default export）')
       }
       // 用户级配置在请求层注入（FeatureRequest.config），进程级加载传空配置
-      this.root.plugin(pluginCtor as new (ctx: Context, config: unknown) => unknown, {})
+      const fork = this.root.plugin(pluginCtor as new (ctx: Context, config: unknown) => unknown, {})
+      this.disposers.set(manifest.pluginId, () => fork.dispose())
       this.runtimes.set(manifest.pluginId, { manifest, status: 'STARTED' })
       this.logger.log(`插件已加载：${manifest.pluginId}@${manifest.version}`)
     } catch (err) {
@@ -138,6 +141,70 @@ export class CordisHost implements OnModuleInit, OnModuleDestroy {
       // 故障隔离：单个插件失败不阻断启动（文档 6.8）
       this.logger.error(`插件 [${manifest.pluginId}] 加载失败：${(err as Error).stack ?? err}`)
     }
+  }
+
+  /**
+   * 热重载（市场安装/卸载、本地 zip 安装后调用）：
+   * 重扫插件目录 → 卸载已移除或版本变更的插件 → 重算依赖 → 加载新增/变更插件。
+   * 未变化的插件保持运行不重启；返回重载后的全量运行状态
+   */
+  async reload(): Promise<PluginRuntime[]> {
+    const pluginsDir = path.join(this.config.dataRoot, 'plugins')
+    const manifests = scanLocalRepo(pluginsDir, (msg) => this.logger.log(msg))
+    const byId = new Map(manifests.map((m) => [m.pluginId, m]))
+
+    // 1) 卸载：目录已移除的插件直接卸载；版本变更的先卸载再重载
+    for (const [pluginId, runtime] of [...this.runtimes]) {
+      const next = byId.get(pluginId)
+      if (!next) {
+        this.disposePlugin(pluginId)
+        this.logger.log(`插件已热卸载：${pluginId}`)
+      } else if (next.version !== runtime.manifest.version) {
+        this.disposePlugin(pluginId)
+      }
+    }
+
+    // 2) 重算依赖（文档 6.4），重建状态表
+    this.resolveResult = resolveDependencies(manifests)
+    const nextRuntimes = new Map<string, PluginRuntime>()
+    for (const { manifest, missing } of this.resolveResult.skipped) {
+      nextRuntimes.set(manifest.pluginId, { manifest, status: 'DEPENDENCY_MISSING', missing })
+      this.logger.warn(`插件 [${manifest.pluginId}] 依赖缺失，未加载：${missing.join(', ')}`)
+    }
+    for (const manifest of this.resolveResult.cyclic) {
+      nextRuntimes.set(manifest.pluginId, { manifest, status: 'ERROR', errorMessage: '依赖关系成环' })
+    }
+
+    // 3) 按依赖顺序加载新增/变更插件；未变化且已启动的保持原状态
+    for (const manifest of this.resolveResult.loadOrder) {
+      const existing = this.runtimes.get(manifest.pluginId)
+      if (existing?.status === 'STARTED' && existing.manifest.version === manifest.version) {
+        nextRuntimes.set(manifest.pluginId, existing)
+        continue
+      }
+      await this.loadPlugin(manifest)
+      const runtime = this.runtimes.get(manifest.pluginId)
+      if (runtime) nextRuntimes.set(manifest.pluginId, runtime)
+    }
+
+    // 4) 原地替换状态表（外部持有的 runtimes 引用继续有效）
+    this.runtimes.clear()
+    for (const [id, runtime] of nextRuntimes) this.runtimes.set(id, runtime)
+    this.logger.log(
+      `插件热重载完成：成功 ${this.countByStatus('STARTED')}，失败 ${this.countByStatus('ERROR')}，依赖缺失 ${this.countByStatus('DEPENDENCY_MISSING')}`,
+    )
+    return [...this.runtimes.values()]
+  }
+
+  /** 卸载单个插件：dispose 回滚副作用并清理状态（异常不阻断重载流程） */
+  private disposePlugin(pluginId: string): void {
+    try {
+      this.disposers.get(pluginId)?.()
+    } catch (err) {
+      this.logger.warn(`插件 [${pluginId}] 卸载清理异常：${(err as Error).message}`)
+    }
+    this.disposers.delete(pluginId)
+    this.runtimes.delete(pluginId)
   }
 
   private countByStatus(status: PluginRuntime['status']): number {

@@ -32,6 +32,12 @@ export const ErrorCode = {
   STYLE_PACK_NOT_FOUND: 2008,
   /** 对话调度/执行失败 */
   CHAT_FAILED: 2009,
+  /** 插件市场服务不可达 */
+  MARKET_UNAVAILABLE: 2010,
+  /** 插件安装/解包失败 */
+  PLUGIN_INSTALL_FAILED: 2011,
+  /** 内置插件不允许卸载 */
+  PLUGIN_UNINSTALL_FORBIDDEN: 2012,
 } as const
 
 export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode]

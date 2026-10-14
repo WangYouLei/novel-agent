@@ -9,6 +9,7 @@
   "scripts": {
     "build": "pnpm -r --workspace-concurrency=4 build",
     "dev": "pnpm --filter @novelagent/launcher dev",
+    "market:dev": "pnpm --filter @novelagent/marketplace dev",
     "db:migrate": "pnpm --filter @novelagent/application db:migrate",
     "db:generate": "pnpm --filter @novelagent/application db:generate",
     "test": "pnpm -r test",

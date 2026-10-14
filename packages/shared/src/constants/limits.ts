@@ -25,6 +25,10 @@ export const LIMITS = {
   CHAT_CONTEXT_MESSAGES: 12,
   /** 对话：会话标题长度（取首条消息截断） */
   CHAT_TITLE_MAX_LENGTH: 24,
+  /** 插件市场：上传/发布插件 zip 包大小上限（20MB） */
+  PLUGIN_ZIP_MAX_BYTES: 20 * 1024 * 1024,
+  /** 插件市场：搜索分页每页上限 */
+  MARKET_PAGE_MAX_SIZE: 50,
 } as const
 
 /**

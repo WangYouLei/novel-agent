@@ -84,6 +84,57 @@ export class PluginRegistryService {
     })
   }
 
+  /**
+   * 市场安装/本地 zip 安装：为用户登记安装记录
+   * 与 ensureInstalledForUser（登录 seed，不动 source）区分：此处 source 为本次安装来源，
+   * 已存在时刷新元数据并置为启用（重新安装视为显式启用）
+   */
+  async installForUser(
+    userId: string,
+    manifest: PluginManifest,
+    source: 'LOCAL' | 'MARKETPLACE',
+  ): Promise<void> {
+    const existing = await this.prisma.installedPlugin.findUnique({
+      where: { userId_pluginId: { userId, pluginId: manifest.pluginId } },
+    })
+    const config = this.applyDefaults(
+      manifest.configSchema,
+      (existing?.config as Record<string, unknown>) ?? {},
+    )
+    const metadata = {
+      name: manifest.displayName,
+      version: manifest.version,
+      author: manifest.author,
+      description: manifest.description,
+      type: manifest.type,
+      source,
+      installPath: manifest.installPath,
+      status: 'INSTALLED' as const,
+      enabled: true,
+      config: config as never,
+      dependencies: {
+        dependencies: manifest.dependencies,
+        optionalDependencies: manifest.optionalDependencies,
+      } as never,
+    }
+    if (!existing) {
+      await this.prisma.installedPlugin.create({
+        data: { userId, pluginId: manifest.pluginId, ...metadata },
+      })
+    } else {
+      await this.prisma.installedPlugin.update({
+        where: { id: existing.id },
+        data: metadata,
+      })
+    }
+  }
+
+  /** 卸载：插件目录已删除，清理所有用户的安装记录（目录为全局共享，单机多用户 MVP 直接全删） */
+  async removeForAllUsers(pluginId: string): Promise<number> {
+    const result = await this.prisma.installedPlugin.deleteMany({ where: { pluginId } })
+    return result.count
+  }
+
   async getByPluginId(userId: string, pluginId: string) {
     const record = await this.prisma.installedPlugin.findUnique({
       where: { userId_pluginId: { userId, pluginId } },
