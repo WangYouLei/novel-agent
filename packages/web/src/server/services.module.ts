@@ -2,6 +2,7 @@ import { Global, Module, type Provider } from '@nestjs/common'
 import {
   AuthService,
   BillingService,
+  ChapterService,
   ChatService,
   ModelConfigService,
   NovelService,
@@ -45,6 +46,11 @@ const providers: Provider[] = [
     provide: NovelService,
     inject: [PRISMA],
     useFactory: (prisma: PrismaClient) => new NovelService(prisma),
+  },
+  {
+    provide: ChapterService,
+    inject: [PRISMA],
+    useFactory: (prisma: PrismaClient) => new ChapterService(prisma),
   },
   {
     provide: StylePackService,
@@ -96,6 +102,7 @@ const providers: Provider[] = [
     AuthService,
     BillingService,
     NovelService,
+    ChapterService,
     StylePackService,
     OutlineService,
     PluginRegistryService,

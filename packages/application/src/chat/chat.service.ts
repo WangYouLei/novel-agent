@@ -15,9 +15,9 @@ export class ChatService {
     })
   }
 
-  listSessions(userId: string) {
+  listSessions(userId: string, novelId?: string) {
     return this.prisma.chatSession.findMany({
-      where: { userId },
+      where: { userId, ...(novelId ? { novelId } : {}) },
       orderBy: { updatedAt: 'desc' },
       take: 50,
       include: { novel: true },

@@ -1,6 +1,13 @@
 import { Body, Controller, Delete, Get, Param, Put, Post, UseGuards } from '@nestjs/common'
-import { NovelService, StylePackService } from '@novelagent/application'
-import type { CreateNovelRequest, NovelDto, UpdateNovelRequest } from '@novelagent/shared'
+import { ChapterService, NovelService, StylePackService } from '@novelagent/application'
+import type {
+  ChapterDto,
+  CreateChapterRequest,
+  CreateNovelRequest,
+  NovelDto,
+  UpdateChapterRequest,
+  UpdateNovelRequest,
+} from '@novelagent/shared'
 import { JwtGuard } from '../common/jwt.guard'
 import { CurrentUser } from '../common/current-user.decorator'
 import { CordisHost } from '../cordis.host'
@@ -11,6 +18,7 @@ import { CordisHost } from '../cordis.host'
 export class NovelController {
   constructor(
     private readonly novelService: NovelService,
+    private readonly chapterService: ChapterService,
     private readonly stylePackService: StylePackService,
     private readonly cordisHost: CordisHost,
   ) {}
@@ -54,5 +62,40 @@ export class NovelController {
   @Get(':id/style-packs')
   async stylePacks(@CurrentUser() userId: string, @Param('id') _id: string) {
     return this.stylePackService.list(userId)
+  }
+
+  // ========== 章节（小说编辑页手动管理正文） ==========
+
+  @Get(':id/chapters')
+  async listChapters(@CurrentUser() userId: string, @Param('id') novelId: string): Promise<ChapterDto[]> {
+    return this.chapterService.list(userId, novelId)
+  }
+
+  @Post(':id/chapters')
+  async createChapter(
+    @CurrentUser() userId: string,
+    @Param('id') novelId: string,
+    @Body() body: CreateChapterRequest,
+  ): Promise<ChapterDto> {
+    return this.chapterService.create(userId, novelId, body)
+  }
+
+  @Put(':id/chapters/:chapterId')
+  async updateChapter(
+    @CurrentUser() userId: string,
+    @Param('id') novelId: string,
+    @Param('chapterId') chapterId: string,
+    @Body() body: UpdateChapterRequest,
+  ): Promise<ChapterDto> {
+    return this.chapterService.update(userId, novelId, chapterId, body)
+  }
+
+  @Delete(':id/chapters/:chapterId')
+  async removeChapter(
+    @CurrentUser() userId: string,
+    @Param('id') novelId: string,
+    @Param('chapterId') chapterId: string,
+  ): Promise<void> {
+    await this.chapterService.remove(userId, novelId, chapterId)
   }
 }

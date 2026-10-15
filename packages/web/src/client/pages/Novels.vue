@@ -9,7 +9,7 @@
 
     <el-row :gutter="16">
       <el-col v-for="novel in novels" :key="novel.id" :xs="24" :sm="12" :md="8" :lg="6">
-        <el-card class="novel-card" shadow="hover">
+        <el-card class="novel-card" shadow="hover" @click="gotoEdit(novel)">
           <div class="novel-title">{{ novel.title }}</div>
           <div class="novel-meta">
             <el-tag size="small" :type="statusType(novel.status)">{{ statusName(novel.status) }}</el-tag>
@@ -21,16 +21,16 @@
           </div>
           <p class="novel-desc">{{ novel.description || '暂无简介' }}</p>
           <div class="novel-actions">
-            <el-button size="small" type="primary" plain @click="gotoOutline(novel)">生成大纲</el-button>
-            <el-button size="small" @click="openEdit(novel)">编辑</el-button>
-            <el-button size="small" type="danger" plain @click="remove(novel)">删除</el-button>
+            <el-button size="small" type="primary" plain @click.stop="gotoEdit(novel)">编辑创作</el-button>
+            <el-button size="small" @click.stop="gotoOutline(novel)">生成大纲</el-button>
+            <el-button size="small" type="danger" plain @click.stop="remove(novel)">删除</el-button>
           </div>
         </el-card>
       </el-col>
     </el-row>
 
-    <!-- 创建 / 编辑对话框（含主体风格包选择，PRD 5.3） -->
-    <el-dialog v-model="dialog.visible" :title="dialog.isEdit ? '编辑小说' : '创建小说'" width="480px">
+    <!-- 创建小说对话框（编辑在小说编辑页进行） -->
+    <el-dialog v-model="dialog.visible" title="创建小说" width="480px">
       <el-form :model="dialog.form" label-width="90px">
         <el-form-item label="标题" required>
           <el-input v-model="dialog.form.title" maxlength="50" />
@@ -77,7 +77,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { del, get, post, put } from '@/api/http'
+import { del, get, post } from '@/api/http'
 import type { NovelDto, StylePackDto } from '@novelagent/shared'
 
 const router = useRouter()
@@ -89,8 +89,6 @@ const genres = ['玄幻', '都市', '科幻', '武侠', '悬疑', '言情', '其
 
 const dialog = reactive({
   visible: false,
-  isEdit: false,
-  editId: '',
   form: { title: '', genre: '', stylePackId: '' as string | null, description: '' },
 })
 
@@ -116,21 +114,7 @@ async function load() {
 }
 
 function openCreate() {
-  dialog.isEdit = false
-  dialog.editId = ''
   dialog.form = { title: '', genre: '', stylePackId: null, description: '' }
-  dialog.visible = true
-}
-
-function openEdit(novel: NovelDto) {
-  dialog.isEdit = true
-  dialog.editId = novel.id
-  dialog.form = {
-    title: novel.title,
-    genre: novel.genre ?? '',
-    stylePackId: novel.stylePackId,
-    description: novel.description ?? '',
-  }
   dialog.visible = true
 }
 
@@ -141,11 +125,7 @@ async function save() {
   }
   saving.value = true
   try {
-    if (dialog.isEdit) {
-      await put(`/api/novels/${dialog.editId}`, dialog.form)
-    } else {
-      await post('/api/novels', dialog.form)
-    }
+    await post('/api/novels', dialog.form)
     dialog.visible = false
     await load()
     ElMessage.success('保存成功')
@@ -167,6 +147,10 @@ function gotoOutline(novel: NovelDto) {
   router.push({ path: '/outline', query: { novelId: novel.id } })
 }
 
+function gotoEdit(novel: NovelDto) {
+  router.push(`/novels/${novel.id}`)
+}
+
 function statusName(status: string): string {
   return { DRAFT: '草稿', ONGOING: '连载中', COMPLETED: '已完结', ARCHIVED: '已归档' }[status] ?? status
 }
@@ -181,6 +165,11 @@ function statusType(status: string): string {
   height: calc(100% - 18px);
   display: flex;
   flex-direction: column;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+.novel-card:hover {
+  transform: translate(-2px, -2px);
 }
 .novel-card :deep(.el-card__body) {
   display: flex;
@@ -188,7 +177,6 @@ function statusType(status: string): string {
   flex: 1;
 }
 .novel-title {
-  font-family: Georgia, 'Noto Serif SC', 'Songti SC', serif;
   font-size: 17px;
   font-weight: 700;
   color: var(--ink-strong);

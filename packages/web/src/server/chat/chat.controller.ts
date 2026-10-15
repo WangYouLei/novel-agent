@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Logger, Param, Post, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Logger, Param, Post, Query, UseGuards } from '@nestjs/common'
 import {
   ChatService,
   ModelConfigService,
@@ -73,8 +73,11 @@ export class ChatController {
   }
 
   @Get('sessions')
-  async listSessions(@CurrentUser() userId: string): Promise<ChatSessionDto[]> {
-    const sessions = await this.chatService.listSessions(userId)
+  async listSessions(
+    @CurrentUser() userId: string,
+    @Query('novelId') novelId?: string,
+  ): Promise<ChatSessionDto[]> {
+    const sessions = await this.chatService.listSessions(userId, novelId || undefined)
     return sessions.map((s) => this.toSessionDto(s))
   }
 

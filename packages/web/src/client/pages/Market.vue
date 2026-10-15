@@ -361,7 +361,6 @@ function formatTime(iso: string): string {
   gap: 4px 0;
 }
 .plugin-name {
-  font-family: Georgia, 'Noto Serif SC', 'Songti SC', serif;
   font-weight: 700;
   font-size: 16px;
   color: var(--ink-strong);

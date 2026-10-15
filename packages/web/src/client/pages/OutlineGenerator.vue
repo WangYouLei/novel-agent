@@ -309,12 +309,10 @@ async function save() {
   flex-wrap: wrap;
 }
 .result-title {
-  font-family: Georgia, 'Noto Serif SC', 'Songti SC', serif;
   font-size: 17px;
   color: var(--ink-strong);
 }
 .logline {
-  font-family: Georgia, 'Noto Serif SC', 'Songti SC', serif;
   font-size: 15px;
   line-height: 1.8;
   color: var(--ink-strong);

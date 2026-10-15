@@ -9,11 +9,7 @@
         </div>
         <div class="brand-sub">AI 小说创作工坊</div>
 
-        <el-menu :default-active="$route.path" router class="side-menu">
-          <el-menu-item index="/chat">
-            <el-icon><ChatDotRound /></el-icon>
-            <span>AI 对话</span>
-          </el-menu-item>
+        <el-menu :default-active="activeMenu" router class="side-menu">
           <el-menu-item index="/novels">
             <el-icon><Notebook /></el-icon>
             <span>小说管理</span>
@@ -101,7 +97,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Coin, ArrowDown, ChatDotRound, Notebook, MagicStick, Grid, Cpu, Brush, ShoppingCart } from '@element-plus/icons-vue'
+import { Coin, ArrowDown, Notebook, MagicStick, Grid, Cpu, Brush, ShoppingCart } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import type { CreditLogDto } from '@novelagent/shared'
 import { CREDIT_POLICY } from '@novelagent/shared'
@@ -114,18 +110,22 @@ const route = useRoute()
 const logs = ref<CreditLogDto[]>([])
 const claiming = ref(false)
 
-const pageTitle = computed(
-  () =>
+const pageTitle = computed(() => {
+  if (route.path.startsWith('/novels/')) return '小说编辑'
+  return (
     ({
-      '/chat': 'AI 对话',
       '/novels': '我的小说',
       '/styles': '风格包',
       '/outline': '大纲生成',
       '/plugins': '插件管理',
       '/market': '插件市场',
       '/models': '模型设置',
-    })[route.path] ?? '',
-)
+    }) as Record<string, string>
+  )[route.path] ?? ''
+})
+
+// 小说编辑页（/novels/:id）保持"小说管理"菜单高亮
+const activeMenu = computed(() => (route.path.startsWith('/novels') ? '/novels' : route.path))
 
 onMounted(() => {
   if (auth.isLoggedIn && !auth.user) {
@@ -184,13 +184,13 @@ body,
   min-width: 0;
 }
 
-/* ===== 侧边栏：深棕底 ===== */
+/* ===== 侧边栏：柠檬黄大色块 ===== */
 .app-aside {
-  background: linear-gradient(180deg, #38291d 0%, #2c2016 100%);
-  color: #e9dfc9;
+  background: var(--accent);
+  color: #111111;
   display: flex;
   flex-direction: column;
-  border-right: none;
+  border-right: var(--nb-border);
 }
 .brand {
   display: flex;
@@ -200,65 +200,82 @@ body,
   cursor: pointer;
 }
 .brand-mark {
-  font-size: 22px;
-  color: var(--gold);
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #111111;
+  background: #ffffff;
+  border: var(--nb-border);
+  border-radius: 10px;
+  box-shadow: 3px 3px 0 #111111;
+  transform: rotate(-6deg);
 }
 .brand-name {
-  font-size: 20px;
-  font-weight: 700;
-  color: #f5ecd7;
-  letter-spacing: 0.04em;
+  font-size: 19px;
+  font-weight: 900;
+  color: #111111;
+  letter-spacing: -0.01em;
 }
 .brand-sub {
-  padding: 0 20px 18px;
+  padding: 6px 20px 18px;
   font-size: 12px;
-  color: #a3937a;
+  color: rgba(17, 17, 17, 0.62);
+  font-weight: 600;
   letter-spacing: 0.16em;
-  border-bottom: 1px solid rgba(233, 223, 201, 0.12);
+  border-bottom: var(--nb-border);
 }
 .aside-foot {
   margin-top: auto;
   padding: 16px 20px;
   font-size: 12px;
-  color: #87755c;
+  color: rgba(17, 17, 17, 0.62);
+  font-weight: 600;
   letter-spacing: 0.2em;
-  border-top: 1px solid rgba(233, 223, 201, 0.1);
+  border-top: var(--nb-border);
   text-align: center;
 }
 
-/* 深色菜单覆写 */
+/* 黄底菜单覆写 */
 .side-menu {
   --el-menu-bg-color: transparent;
-  --el-menu-text-color: #cbb996;
-  --el-menu-hover-bg-color: rgba(233, 223, 201, 0.08);
-  --el-menu-active-color: #f0d9a8;
+  --el-menu-text-color: #111111;
+  --el-menu-hover-bg-color: rgba(17, 17, 17, 0.08);
+  --el-menu-active-color: #111111;
   --el-menu-item-height: 48px;
   border-right: none;
   padding: 12px 10px 0;
 }
 .side-menu .el-menu-item {
-  border-radius: 8px;
-  margin-bottom: 4px;
-}
-.side-menu .el-menu-item.is-active {
-  background: linear-gradient(90deg, rgba(201, 160, 99, 0.25), rgba(201, 160, 99, 0.1));
-  color: #f0d9a8;
+  border-radius: 10px;
+  margin-bottom: 6px;
   font-weight: 600;
 }
+.side-menu .el-menu-item.is-active {
+  background: #ffffff;
+  border: var(--nb-border);
+  box-shadow: 3px 3px 0 #111111;
+  color: #111111;
+  font-weight: 800;
+}
 
-/* ===== 顶栏 ===== */
+/* ===== 顶栏：奶油底 + 墨黑粗下边 ===== */
 .app-header {
   display: flex;
   align-items: center;
   gap: 14px;
-  background: var(--card-bg);
-  border-bottom: 1px solid var(--line-soft);
+  background: var(--paper-bg);
+  border-bottom: var(--nb-border);
   padding: 0 24px;
 }
 .page-title {
   font-size: 17px;
-  font-weight: 600;
+  font-weight: 800;
   color: var(--ink-strong);
+  background: linear-gradient(transparent 58%, var(--accent) 58%);
+  padding: 0 6px;
 }
 .spacer {
   flex: 1;
@@ -267,17 +284,23 @@ body,
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--accent-soft);
-  color: var(--accent-deep);
-  border: 1px solid #e2cba4;
+  background: #ffffff;
+  color: #111111;
+  border: var(--nb-border);
   border-radius: 999px;
   padding: 5px 14px;
   font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
-  transition: background 0.2s;
+  box-shadow: 3px 3px 0 #111111;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 .credit-chip:hover {
-  background: #efdfc3;
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 #111111;
+}
+.credit-chip .el-icon {
+  color: var(--accent-deep);
 }
 .credit-num {
   font-weight: 700;
@@ -302,12 +325,13 @@ body,
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent), var(--gold));
-  color: #fffdf7;
+  background: var(--gold);
+  color: #111111;
+  border: 2px solid #111111;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-weight: 600;
+  font-weight: 800;
   font-size: 14px;
 }
 .username {
@@ -319,10 +343,10 @@ body,
   font-size: 12px;
 }
 
-/* ===== 主区 ===== */
+/* ===== 主区：奶油底 + 圆点网格纹理 ===== */
 .app-main {
-  background: var(--paper-bg);
-  background-image: radial-gradient(rgba(169, 113, 63, 0.04) 1px, transparent 1px);
+  background: transparent;
+  background-image: radial-gradient(rgba(17, 17, 17, 0.07) 1.2px, transparent 1.2px);
   background-size: 22px 22px;
   padding: 24px 28px;
   overflow-y: auto;

@@ -240,7 +240,6 @@ function sourceName(source: string): string {
   gap: 12px;
 }
 .plugin-name {
-  font-family: Georgia, 'Noto Serif SC', 'Songti SC', serif;
   font-weight: 700;
   font-size: 16px;
   color: var(--ink-strong);

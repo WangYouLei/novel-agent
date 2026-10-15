@@ -9,6 +9,7 @@ NovelAgent is a **pluggable AI-powered novel writing platform**. Core writing ca
 - **Pluggable architecture**: Writing capabilities live in plugins that can be independently installed, uninstalled, enabled, and disabled, with dependency declaration between plugins
 - **Personalized styles**: A three-tier style-pack system (built-in / user-generated / third-party), with one main style pack per novel
 - **Full writing workflow**: From idea incubation, worldbuilding, and character design to outline planning and chapter-by-chapter writing
+- **Novel editor**: A novel-centric editing page with chapter management (create, edit, reorder, delete) and automatic word count, with AI chat integrated for writing while you ask
 - **Dual model access**: Built-in free models (credit-based billing) + user-defined models (bring your own API key, e.g. OpenAI, Claude, or local models)
 - **Low floor, high ceiling**: Ready to use out of the box for beginners; fully customizable models, styles, and plugins for power users
 

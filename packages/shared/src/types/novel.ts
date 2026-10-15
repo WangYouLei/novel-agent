@@ -28,3 +28,32 @@ export interface UpdateNovelRequest {
   stylePackId?: string | null
   status?: NovelStatus
 }
+
+export type ChapterStatus = 'DRAFT' | 'OUTLINED' | 'WRITING' | 'REVIEWING' | 'PUBLISHED'
+
+export interface ChapterDto {
+  id: string
+  novelId: string
+  /** 展示序号（按 sortOrder 排序后动态生成，从 1 开始） */
+  no: number
+  title: string
+  summary: string | null
+  content: string | null
+  wordCount: number
+  status: ChapterStatus
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateChapterRequest {
+  title: string
+  summary?: string
+  content?: string
+}
+
+export interface UpdateChapterRequest {
+  title?: string
+  summary?: string | null
+  content?: string | null
+  status?: ChapterStatus
+}

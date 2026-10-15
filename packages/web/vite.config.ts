@@ -18,7 +18,14 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': { target: 'http://localhost:3000', changeOrigin: true },
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        // root=src/client 时源码模块 URL 形如 /api/http.ts，会被本代理拦截转发后端，需放行
+        bypass: (req) => {
+          if (req.url && /\.[tj]sx?$/.test(req.url.split('?')[0] ?? '')) return req.url
+        },
+      },
       '/socket.io': { target: 'http://localhost:3000', ws: true },
     },
   },

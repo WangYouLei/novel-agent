@@ -118,41 +118,57 @@ async function register() {
   display: flex;
   align-items: stretch;
   gap: 0;
-  max-width: 860px;
+  max-width: 880px;
   width: 100%;
-  border-radius: 16px;
+  border-radius: 20px;
   overflow: hidden;
-  box-shadow: 0 12px 40px rgba(58, 47, 35, 0.12);
+  border: 3px solid #111111;
+  box-shadow: var(--nb-shadow-lg);
 }
 
-/* 左侧品牌区：深棕渐变 */
+/* 左侧品牌区：柠檬黄大色块 + 半调圆点纹理 */
 .login-brand {
   flex: 1;
-  background: linear-gradient(160deg, #3d2c1e 0%, #2a1e14 100%);
-  color: #e9dfc9;
+  background:
+    radial-gradient(rgba(17, 17, 17, 0.12) 1.5px, transparent 1.5px);
+  background-size: 16px 16px;
+  background-color: var(--accent);
+  color: #111111;
   padding: 56px 44px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: flex-start;
+  border-right: var(--nb-border);
 }
 .brand-mark {
-  font-size: 34px;
-  color: var(--gold);
-  margin-bottom: 12px;
+  width: 56px;
+  height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: #111111;
+  background: #ffffff;
+  border: var(--nb-border);
+  border-radius: 14px;
+  box-shadow: 4px 4px 0 #111111;
+  transform: rotate(-6deg);
+  margin-bottom: 20px;
 }
 .brand-name {
   margin: 0;
-  font-size: 34px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: #f5ecd7;
+  font-size: 38px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: #111111;
 }
 .brand-slogan {
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   font-size: 13px;
+  font-weight: 700;
   letter-spacing: 0.28em;
-  color: #b3a386;
+  color: rgba(17, 17, 17, 0.72);
 }
 .brand-divider {
   display: flex;
@@ -163,20 +179,27 @@ async function register() {
 }
 .brand-divider span {
   flex: 1;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, #8a755a, transparent);
+  height: 4px;
+  background: #111111;
+  border-radius: 2px;
 }
 .brand-divider em {
-  color: var(--gold);
+  color: #111111;
   font-style: normal;
+  font-size: 16px;
 }
 .brand-quote {
   margin: 0;
-  font-size: 13px;
-  color: #cbb996;
-  letter-spacing: 0.1em;
-  font-family: Georgia, 'Noto Serif SC', 'Songti SC', serif;
-  font-style: italic;
+  font-size: 14px;
+  font-weight: 800;
+  color: #111111;
+  letter-spacing: 0.06em;
+  background: #ffffff;
+  border: var(--nb-border);
+  border-radius: 10px;
+  box-shadow: 3px 3px 0 #111111;
+  padding: 10px 16px;
+  transform: rotate(1.2deg);
 }
 
 /* 右侧表单卡片 */
@@ -184,6 +207,8 @@ async function register() {
   width: 380px;
   border: none;
   border-radius: 0;
+  background: #ffffff;
+  box-shadow: none;
 }
 .login-card :deep(.el-card__body) {
   padding: 44px 38px;
