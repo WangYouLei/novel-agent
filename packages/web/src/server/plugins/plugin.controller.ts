@@ -145,6 +145,8 @@ export class PluginController {
         (msg) => this.logger.log(msg),
       )
     } catch (err) {
+      // 保留底层 BizError 的专用错误码（如内置插件不可覆盖安装 2013）
+      if (err instanceof BizError) throw err
       throw new BizError(ErrorCode.PLUGIN_INSTALL_FAILED, `本地插件安装失败：${(err as Error).message}`)
     }
     await this.cordisHost.reload()

@@ -2,8 +2,10 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { createRequire } from 'node:module'
+import { BizError, ErrorCode } from '@novelagent/shared'
 import { readManifest } from './local-repo'
 import { findPluginRootDir, unzipToDir } from './zip'
+import { assertValidPluginId } from './manifest'
 import type { PluginManifest } from './manifest'
 
 /**
@@ -31,6 +33,15 @@ export function readInstallSource(pluginDir: string): string | undefined {
   }
 }
 
+/** 校验 target 解析后仍位于 root 目录内（评审 H1/H3：防路径穿越的纵深防御） */
+function ensureWithin(root: string, target: string): void {
+  const resolvedRoot = path.resolve(root)
+  const resolvedTarget = path.resolve(target)
+  if (resolvedTarget !== resolvedRoot && !resolvedTarget.startsWith(resolvedRoot + path.sep)) {
+    throw new Error(`路径越界：${target} 不在 ${root} 目录内`)
+  }
+}
+
 /**
  * 从源目录安装插件（市场下载解压后 / 本地目录）：
  * 校验清单 → 覆盖目标目录（package.json + dist）→ 写 .meta 元数据
@@ -46,6 +57,12 @@ export function installPluginFromDirectory(
   if (!manifest) throw new Error(`插件源目录缺少 package.json：${sourceDir}`)
 
   const targetDir = path.join(pluginsDir, manifest.pluginId)
+  // 纵深防御：确认目标目录仍在 plugins 根内（评审 H1）
+  ensureWithin(pluginsDir, targetDir)
+  // 拒绝覆盖内置插件（评审 H1 放大点：对齐卸载端点已有的防护）
+  if (readInstallSource(targetDir) === 'builtin') {
+    throw new BizError(ErrorCode.PLUGIN_INSTALL_FORBIDDEN, `内置插件 ${manifest.pluginId} 不可覆盖安装（随宿主启动同步维护）`)
+  }
   fs.rmSync(targetDir, { recursive: true, force: true })
   fs.mkdirSync(targetDir, { recursive: true })
   fs.copyFileSync(path.join(sourceDir, 'package.json'), path.join(targetDir, 'package.json'))
@@ -89,7 +106,10 @@ export function installPluginFromZip(
  * 内置插件（.meta/source=builtin，由启动同步维护）拒绝卸载
  */
 export function uninstallPlugin(pluginsDir: string, pluginId: string, log: (msg: string) => void = console.log): void {
+  // pluginId 来自 URL 参数，删除前先过白名单与越界校验（评审 H1 卸载路径）
+  assertValidPluginId(pluginId)
   const pluginDir = path.join(pluginsDir, pluginId)
+  ensureWithin(pluginsDir, pluginDir)
   if (!fs.existsSync(pluginDir)) {
     throw new Error(`插件 ${pluginId} 不存在，无法卸载`)
   }
@@ -123,6 +143,7 @@ export function syncBuiltinPlugins(
     if (!manifest) continue
 
     const targetDir = path.join(pluginsDir, manifest.pluginId)
+    ensureWithin(pluginsDir, targetDir)
     const targetPkg = path.join(targetDir, 'package.json')
 
     // 版本一致则不同步（dist 内容假定与版本对应）

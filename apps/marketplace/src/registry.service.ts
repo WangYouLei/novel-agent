@@ -274,7 +274,14 @@ export class MarketRegistryService implements OnModuleInit {
   }
 
   private zipPath(pluginId: string, version: string): string {
-    return path.join(this.dataDir, 'packages', pluginId, `${version}.zip`)
+    const zipPath = path.join(this.dataDir, 'packages', pluginId, `${version}.zip`)
+    // 纵深防御：确认解析后仍在市场包目录内（评审 H3 二次路径穿越）
+    const packagesRoot = path.resolve(this.dataDir, 'packages')
+    const resolved = path.resolve(zipPath)
+    if (resolved !== packagesRoot && !resolved.startsWith(packagesRoot + path.sep)) {
+      throw new Error(`非法的插件包路径：${pluginId}@${version}`)
+    }
+    return zipPath
   }
 
   private registryPath(): string {

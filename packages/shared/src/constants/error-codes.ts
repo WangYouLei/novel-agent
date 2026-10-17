@@ -38,6 +38,8 @@ export const ErrorCode = {
   PLUGIN_INSTALL_FAILED: 2011,
   /** 内置插件不允许卸载 */
   PLUGIN_UNINSTALL_FORBIDDEN: 2012,
+  /** 内置插件不允许覆盖安装 */
+  PLUGIN_INSTALL_FORBIDDEN: 2013,
 } as const
 
 export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode]

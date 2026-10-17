@@ -1,6 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import semver from 'semver'
 import type { PluginManifest, PluginConfigField, PluginInputField } from './manifest'
+import { assertValidPluginId } from './manifest'
 
 /**
  * 本地插件仓库（文档 6.1/6.2）：
@@ -47,6 +49,20 @@ export function readManifest(pluginDir: string): PluginManifest | undefined {
   if (!meta || typeof meta.id !== 'string') {
     throw new Error('package.json 缺少 novelagent.id 字段')
   }
+  // 插件 id 白名单（评审 H1/H3）：安装、卸载、市场三条路径的清单均经此校验
+  assertValidPluginId(meta.id)
+
+  // displayName/description 必须为 string（评审 M6：数字等类型会打挂市场读取接口）
+  if (meta.displayName !== undefined && typeof meta.displayName !== 'string') {
+    throw new Error(`非法的 novelagent.displayName：${JSON.stringify(meta.displayName)}（必须为字符串）`)
+  }
+  if (meta.description !== undefined && typeof meta.description !== 'string') {
+    throw new Error(`非法的 novelagent.description：${JSON.stringify(meta.description)}（必须为字符串）`)
+  }
+  // version 强制合法 semver（评审 H3：防 "../../y" 式穿越与市场排序崩溃）
+  if (typeof pkg.version !== 'string' || !semver.valid(pkg.version)) {
+    throw new Error(`package.json 缺少合法的 version 字段（semver）：${JSON.stringify(pkg.version)}`)
+  }
 
   // 插件类型归一化为大写下划线（文档 4.2 示例用小写，允许 style-generator 连字符写法）
   const rawType = String(meta.type ?? '').toUpperCase().replace(/-/g, '_')
@@ -62,10 +78,10 @@ export function readManifest(pluginDir: string): PluginManifest | undefined {
 
   return {
     pluginId: meta.id,
-    displayName: (meta.displayName as string) ?? meta.id,
-    version: pkg.version ?? '0.0.0',
+    displayName: meta.displayName ?? meta.id,
+    version: pkg.version,
     type,
-    description: meta.description as string | undefined,
+    description: meta.description,
     author: meta.author as string | undefined,
     dependencies: (meta.dependencies as Record<string, string>) ?? {},
     optionalDependencies: (meta.optionalDependencies as Record<string, string>) ?? {},
