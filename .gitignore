@@ -1,0 +1,26 @@
+# 依赖
+node_modules/
+
+# 构建产物（tsc / tsup / vite）
+dist/
+coverage/
+*.tsbuildinfo
+
+# 运行时数据目录（SQLite 数据库、密钥文件、插件仓库、日志）
+data/
+marketplace-data/
+.appdata/
+*.db
+*.db-journal
+*.log
+
+# 环境变量（含密钥，禁止入库）
+.env
+.env.*
+!.env.example
+
+# 编辑器与操作系统
+.DS_Store
+.idea/
+.vscode/
+*.swp

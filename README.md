@@ -52,7 +52,7 @@ novel-agent/
 # 安装依赖
 pnpm install
 
-# 构建所有包
+# 构建所有包（启动器需同步各官方插件的 dist 产物，首次运行请务必先构建）
 pnpm build
 
 # 启动开发
@@ -61,9 +61,12 @@ pnpm dev
 # 启动插件市场服务（可选，默认 3100 端口；启动后可在「插件市场」页浏览/安装/更新插件）
 pnpm market:dev
 
-# 数据库迁移
+# 数据库迁移（pnpm dev 启动时也会自动执行）
 pnpm db:migrate
 ```
+
+- 默认端口：主应用 `3000`（环境变量 `PORT` 修改）、插件市场 `3100`（环境变量 `MARKET_PORT` 修改）
+- 数据目录：默认为仓库根目录 `data/`（SQLite 数据库、密钥文件、插件仓库、内置风格包），可用环境变量 `NOVELAGENT_DATA_ROOT` 重定向
 
 > 插件市场服务未启动时，市场页显示离线提示，仍可通过「插件市场」页的「安装本地插件」上传 zip 直接安装；第三方插件 zip 可经 `POST /api/market/publish` 发布到市场（字段名 `file`）。
 

@@ -52,18 +52,23 @@ Prerequisites: Node.js >= 18.18, pnpm
 # Install dependencies
 pnpm install
 
-# Build all packages
+# Build all packages (the launcher syncs each official plugin's dist output; build first before the first run)
 pnpm build
 
 # Start development
 pnpm dev
 
-# Start the plugin marketplace service (optional, port 3100 by default)
+# Start the plugin marketplace service (optional, port 3100 by default; browse/install/update plugins on the "Marketplace" page)
 pnpm market:dev
 
-# Run database migrations
+# Run database migrations (also executed automatically when starting via pnpm dev)
 pnpm db:migrate
 ```
+
+- Default ports: main app `3000` (override with the `PORT` env var), plugin marketplace `3100` (override with `MARKET_PORT`)
+- Data directory: defaults to `data/` at the repo root (SQLite database, key files, plugin repository, built-in style packs); redirect it with the `NOVELAGENT_DATA_ROOT` env var
+
+> When the marketplace service is not running, the marketplace page shows an offline notice; you can still install a plugin by uploading its zip via "Install local plugin" on that page. Third-party plugin zips can be published to the marketplace via `POST /api/market/publish` (multipart field name `file`).
 
 ## License
 
