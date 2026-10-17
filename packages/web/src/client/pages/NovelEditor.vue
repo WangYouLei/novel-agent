@@ -64,6 +64,7 @@
                   v-model="activeChapterId"
                   placeholder="选择章节"
                   style="flex: 1"
+                  :disabled="sending"
                   @change="onSelectChapter"
                 >
                   <el-option v-for="c in chapters" :key="c.id" :label="`第${c.no}章 ${c.title}`" :value="c.id" />
@@ -126,11 +127,18 @@
               v-model="activeSessionId"
               placeholder="选择对话"
               style="flex: 1"
+              :disabled="sending"
               @change="onSelectSession"
             >
               <el-option v-for="s in sessions" :key="s.id" :label="s.title" :value="s.id" />
             </el-select>
-            <el-button type="primary" plain :loading="creatingSession" @click="createSession">
+            <el-button
+              type="primary"
+              plain
+              :loading="creatingSession"
+              :disabled="sending"
+              @click="createSession"
+            >
               ＋ 新对话
             </el-button>
           </div>
@@ -222,6 +230,7 @@
                   size="small"
                   style="width: 180px"
                   placeholder="选择模型配置"
+                  :disabled="sending"
                 >
                   <el-option
                     v-for="m in modelConfigs"
@@ -302,6 +311,8 @@ const editingChapter = ref<{
 } | null>(null)
 const savingChapter = ref(false)
 const deletingChapter = ref(false)
+// 基线正文：上次保存成功或加载章节时的内容值，用于切章前 dirty 判断
+const savedContent = ref('')
 
 // ===== AI 对话（绑定本小说） =====
 const sessions = ref<ChatSessionDto[]>([])
@@ -334,9 +345,21 @@ const canSend = computed(
 
 let offProgress: (() => void) | undefined
 
+/** Ctrl+S 快捷保存章节（仅章节编辑页签且有正在编辑的章节时触发） */
+function onGlobalKeydown(e: KeyboardEvent) {
+  if (!e.ctrlKey || e.key.toLowerCase() !== 's') return
+  if (activeTab.value !== 'chapters' || !editingChapter.value) return
+  e.preventDefault() // 阻止浏览器默认保存
+  if (!savingChapter.value) saveChapter()
+}
+
 onMounted(async () => {
+  document.addEventListener('keydown', onGlobalKeydown)
   if (bridgeCtx) {
     offProgress = bridgeCtx.on('generation-progress', (payload: GenerationProgressPayload) => {
+      // 仅接受本页发起的生成进度（sending 期间 + 本小说），双开标签页/多任务时丢弃其他来源，避免进度串扰。
+      // 注：payload.sessionId 是后端生成任务（writingSession）id，聊天接口不返回该 id，故以 novelId 过滤。
+      if (!sending.value || payload.novelId !== novelId) return
       progress.value = payload.progress
       progressMessage.value = payload.message
     })
@@ -370,7 +393,10 @@ onMounted(async () => {
   }
 })
 
-onUnmounted(() => offProgress?.())
+onUnmounted(() => {
+  offProgress?.()
+  document.removeEventListener('keydown', onGlobalKeydown)
+})
 
 // ===== 小说信息 =====
 
@@ -392,18 +418,42 @@ async function saveNovel() {
 
 // ===== 章节 =====
 
-async function loadChapters(selectId?: string) {
+async function loadChapters(selectId?: string, opts?: { skipDirtyCheck?: boolean }) {
   chapters.value = await get<ChapterDto[]>(`/api/novels/${novelId}/chapters`)
   if (chapters.value.length > 0) {
     const target = selectId ?? activeChapterId.value
-    await onSelectChapter(target && chapters.value.some((c) => c.id === target) ? target : chapters.value[0].id)
+    await onSelectChapter(
+      target && chapters.value.some((c) => c.id === target) ? target : chapters.value[0].id,
+      opts,
+    )
   } else {
     activeChapterId.value = ''
     editingChapter.value = null
+    savedContent.value = ''
   }
 }
 
-function onSelectChapter(id: string) {
+/** dirty 守卫：正文相对基线有未保存修改时弹确认；返回 false 表示用户取消 */
+async function confirmLoseUnsaved(): Promise<boolean> {
+  const chapter = editingChapter.value
+  if (!chapter || chapter.content === savedContent.value) return true
+  try {
+    await ElMessageBox.confirm('当前章节有未保存的修改，切换后将丢失，确认切换？', '未保存提醒', {
+      type: 'warning',
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function onSelectChapter(id: string, opts?: { skipDirtyCheck?: boolean }) {
+  // 切章守卫：切换到其他章节且正文有未保存修改时先确认，取消则中止切换（回滚下拉选中值）
+  const current = editingChapter.value
+  if (!opts?.skipDirtyCheck && current && current.id !== id && !(await confirmLoseUnsaved())) {
+    activeChapterId.value = current.id
+    return
+  }
   const chapter = chapters.value.find((c) => c.id === id)
   activeChapterId.value = id
   editingChapter.value = chapter
@@ -415,13 +465,17 @@ function onSelectChapter(id: string) {
         content: chapter.content ?? '',
       }
     : null
+  // 加载章节，更新基线
+  savedContent.value = chapter ? (chapter.content ?? '') : ''
 }
 
 async function createChapter() {
+  // 新建后会切换到新章节，先确认是否丢弃当前章未保存修改
+  if (!(await confirmLoseUnsaved())) return
   const title = `第${chapters.value.length + 1}章`
   try {
     const chapter = await post<ChapterDto>(`/api/novels/${novelId}/chapters`, { title })
-    await loadChapters(chapter.id)
+    await loadChapters(chapter.id, { skipDirtyCheck: true })
     ElMessage.success('已新建章节')
   } catch (err) {
     ElMessage.error((err as Error).message)
@@ -443,6 +497,8 @@ async function saveChapter() {
       summary: chapter.summary || null,
       content: chapter.content,
     })
+    // 保存成功，更新基线
+    savedContent.value = chapter.content
     await loadChapters(chapter.id)
     if (novel.value) novel.value = await get<NovelDto>(`/api/novels/${novelId}`)
     ElMessage.success('章节已保存')
@@ -460,7 +516,8 @@ async function removeChapter() {
   deletingChapter.value = true
   try {
     await del(`/api/novels/${novelId}/chapters/${chapter.id}`)
-    await loadChapters()
+    // 删除确认已覆盖内容丢弃，后续切换章节跳过 dirty 守卫
+    await loadChapters(undefined, { skipDirtyCheck: true })
     if (novel.value) novel.value = await get<NovelDto>(`/api/novels/${novelId}`)
     ElMessage.success('章节已删除')
   } catch (err) {
@@ -526,7 +583,10 @@ async function send() {
     input.value = ''
     attachment.value = null
     auth.fetchMe().catch(() => undefined) // 刷新积分显示
-    session.title = result.userMessage.content.slice(0, 24)
+    // 会话标题由后端生成（首条消息时截断生成，评审 L8），刷新列表以后端为准，前端不再截断
+    get<ChatSessionDto[]>(`/api/chat/sessions?novelId=${novelId}`)
+      .then((list) => (sessions.value = list))
+      .catch(() => undefined)
   } catch (err) {
     messages.value.pop() // 回滚乐观消息
     ElMessage.error((err as Error).message)
