@@ -44,7 +44,7 @@ function ensureWithin(root: string, target: string): void {
 
 /**
  * 从源目录安装插件（市场下载解压后 / 本地目录）：
- * 校验清单 → 覆盖目标目录（package.json + dist）→ 写 .meta 元数据
+ * 校验清单 → 暂存目录复制并校验 → 原子切换到目标目录（package.json + dist）→ 写 .meta 元数据
  * @returns 安装后的清单（installPath 指向目标目录）
  */
 export function installPluginFromDirectory(
@@ -59,20 +59,44 @@ export function installPluginFromDirectory(
   const targetDir = path.join(pluginsDir, manifest.pluginId)
   // 纵深防御：确认目标目录仍在 plugins 根内（评审 H1）
   ensureWithin(pluginsDir, targetDir)
-  // 拒绝覆盖内置插件（评审 H1 放大点：对齐卸载端点已有的防护）
+  // 拒绝覆盖内置插件（评审 H1 放大点：对齐卸载端点已有的防护；须在动目标目录之前判定）
   if (readInstallSource(targetDir) === 'builtin') {
     throw new BizError(ErrorCode.PLUGIN_INSTALL_FORBIDDEN, `内置插件 ${manifest.pluginId} 不可覆盖安装（随宿主启动同步维护）`)
   }
-  fs.rmSync(targetDir, { recursive: true, force: true })
-  fs.mkdirSync(targetDir, { recursive: true })
-  fs.copyFileSync(path.join(sourceDir, 'package.json'), path.join(targetDir, 'package.json'))
-  fs.cpSync(path.join(sourceDir, 'dist'), path.join(targetDir, 'dist'), { recursive: true })
 
-  // 安装元数据（文档 6.2 .meta/）
-  const metaDir = path.join(targetDir, '.meta')
-  fs.mkdirSync(metaDir, { recursive: true })
-  fs.writeFileSync(path.join(metaDir, 'installedAt'), new Date().toISOString())
-  fs.writeFileSync(path.join(metaDir, 'source'), source.toLowerCase())
+  // 安装原子化：先在暂存目录完成复制与校验，通过后一次性切换到目标目录，
+  // 避免逐文件复制中途中断留下半成品目录、被宿主扫描为损坏插件
+  const stagingDir = path.join(pluginsDir, `.staging-${manifest.pluginId}-${Date.now()}`)
+  ensureWithin(pluginsDir, stagingDir)
+  try {
+    fs.mkdirSync(stagingDir, { recursive: true })
+    fs.copyFileSync(path.join(sourceDir, 'package.json'), path.join(stagingDir, 'package.json'))
+    fs.cpSync(path.join(sourceDir, 'dist'), path.join(stagingDir, 'dist'), { recursive: true })
+
+    // 安装元数据（文档 6.2 .meta/）
+    const metaDir = path.join(stagingDir, '.meta')
+    fs.mkdirSync(metaDir, { recursive: true })
+    fs.writeFileSync(path.join(metaDir, 'installedAt'), new Date().toISOString())
+    fs.writeFileSync(path.join(metaDir, 'source'), source.toLowerCase())
+
+    // 校验暂存目录：清单可读且 pluginId/version 与源一致、dist 存在，确认复制完整后才切换
+    const staged = readManifest(stagingDir)
+    if (!staged) throw new Error(`暂存目录清单读取失败：${manifest.pluginId}`)
+    if (staged.pluginId !== manifest.pluginId || staged.version !== manifest.version) {
+      throw new Error(`暂存目录清单与源不一致：${manifest.pluginId}@${manifest.version}`)
+    }
+    if (!fs.existsSync(path.join(stagingDir, 'dist'))) {
+      throw new Error(`暂存目录缺少 dist：${manifest.pluginId}`)
+    }
+
+    // 原子切换：Windows 上 rename 到已存在目录会失败，须先删除目标再 rename；
+    // 该删除-切换窗口远小于逐文件复制的窗口，可接受
+    fs.rmSync(targetDir, { recursive: true, force: true })
+    fs.renameSync(stagingDir, targetDir)
+  } finally {
+    // 成功时暂存目录已 rename 走，失败时清理半成品，均保证无 .staging-* 残留
+    fs.rmSync(stagingDir, { recursive: true, force: true })
+  }
 
   log(`[installer] 插件已安装（${source}）：${manifest.pluginId}@${manifest.version}`)
   // 重新读取以返回 installPath 指向目标目录的清单

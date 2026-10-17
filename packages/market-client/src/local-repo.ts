@@ -20,6 +20,8 @@ export function scanLocalRepo(pluginsDir: string, log: (msg: string) => void = c
   const manifests: PluginManifest[] = []
   for (const entry of fs.readdirSync(pluginsDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue
+    // 跳过 . 开头的隐藏目录（如安装期间的 .staging-* 暂存目录），不作为插件解析
+    if (entry.name.startsWith('.')) continue
     const dir = path.join(pluginsDir, entry.name)
     try {
       const manifest = readManifest(dir)

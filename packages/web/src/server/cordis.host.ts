@@ -41,6 +41,8 @@ export class CordisHost implements OnModuleInit, OnModuleDestroy {
   /** pluginId → 卸载回调（Cordis ForkScope.dispose，回滚插件全部副作用） */
   private readonly disposers = new Map<string, () => boolean>()
   private resolveResult: ResolveResult = { loadOrder: [], skipped: [], cyclic: [] }
+  /** reload 串行链：并发触发的重载排队执行（内部已 catch，不会因前一次失败断链） */
+  private reloadChain: Promise<void> = Promise.resolve()
 
   constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {}
 
@@ -146,9 +148,21 @@ export class CordisHost implements OnModuleInit, OnModuleDestroy {
   /**
    * 热重载（市场安装/卸载、本地 zip 安装后调用）：
    * 重扫插件目录 → 卸载已移除或版本变更的插件 → 重算依赖 → 加载新增/变更插件。
-   * 未变化的插件保持运行不重启；返回重载后的全量运行状态
+   * 未变化的插件保持运行不重启；返回重载后的全量运行状态。
+   * 并发的安装/卸载/启用操作可能同时触发重载，经实例级 promise 链串行化执行，
+   * 避免并发扫描与插件重复加载/竞态
    */
-  async reload(): Promise<PluginRuntime[]> {
+  reload(): Promise<PluginRuntime[]> {
+    // current 携带本次执行的错误向外传播；内部链吞掉错误防止前一次失败断链
+    const current = this.reloadChain.then(() => this.doReload())
+    this.reloadChain = current.then(
+      () => {},
+      () => {},
+    )
+    return current
+  }
+
+  private async doReload(): Promise<PluginRuntime[]> {
     const pluginsDir = path.join(this.config.dataRoot, 'plugins')
     const manifests = scanLocalRepo(pluginsDir, (msg) => this.logger.log(msg))
     const byId = new Map(manifests.map((m) => [m.pluginId, m]))

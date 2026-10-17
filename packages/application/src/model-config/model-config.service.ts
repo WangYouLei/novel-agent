@@ -26,17 +26,26 @@ export class ModelConfigService {
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
       include: { installedPlugin: { select: { name: true } } },
     })
-    return configs.map((c) => ({
-      id: c.id,
-      installedPluginId: c.installedPluginId,
-      installedPluginName: c.installedPlugin.name,
-      name: c.name,
-      baseUrl: c.baseUrl,
-      apiKeyMasked: maskApiKey(this.decrypt(c.apiKeyEncrypted)),
-      modelName: c.modelName,
-      isDefault: c.isDefault,
-      createdAt: c.createdAt.toISOString(),
-    }))
+    return configs.map((c) => {
+      let apiKeyMasked: string
+      try {
+        apiKeyMasked = maskApiKey(this.decrypt(c.apiKeyEncrypted))
+      } catch {
+        // 单条解密失败（如密钥文件已更换）不拖垮整个列表：该条目掩码标记，其余字段正常返回
+        apiKeyMasked = '****（解密失败）'
+      }
+      return {
+        id: c.id,
+        installedPluginId: c.installedPluginId,
+        installedPluginName: c.installedPlugin.name,
+        name: c.name,
+        baseUrl: c.baseUrl,
+        apiKeyMasked,
+        modelName: c.modelName,
+        isDefault: c.isDefault,
+        createdAt: c.createdAt.toISOString(),
+      }
+    })
   }
 
   async create(userId: string, req: CreateModelConfigRequest): Promise<ModelConfigDto> {
