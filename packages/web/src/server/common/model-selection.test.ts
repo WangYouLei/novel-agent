@@ -10,8 +10,13 @@ import { resolveModelSelection, type ModelSelectionDeps } from './model-selectio
  */
 
 /** 构造最小依赖 mock：自定义配置指向 openai-model 插件 */
-function makeDeps(options?: { pluginEnabled?: boolean; runtimeStatus?: string }): ModelSelectionDeps {
+function makeDeps(options?: {
+  pluginEnabled?: boolean
+  pluginInstalled?: boolean
+  runtimeStatus?: string
+}): ModelSelectionDeps {
   const pluginEnabled = options?.pluginEnabled ?? true
+  const pluginInstalled = options?.pluginInstalled ?? true
   const runtimeStatus = options?.runtimeStatus ?? 'STARTED'
   return {
     modelConfigService: {
@@ -24,7 +29,12 @@ function makeDeps(options?: { pluginEnabled?: boolean; runtimeStatus?: string })
       }),
     },
     pluginRegistry: {
-      getByPluginId: vi.fn().mockResolvedValue({ enabled: pluginEnabled }),
+      // 未安装：模拟服务层 getByPluginId 抛 PLUGIN_NOT_FOUND；已安装：按 enabled 返回
+      getByPluginId: pluginInstalled
+        ? vi.fn().mockResolvedValue({ enabled: pluginEnabled })
+        : vi.fn().mockRejectedValue(
+            new BizError(ErrorCode.PLUGIN_NOT_FOUND, '插件 openai-model 未安装'),
+          ),
     },
     cordisHost: {
       runtimes: new Map([['openai-model', { status: runtimeStatus }]]),
@@ -77,12 +87,21 @@ describe('resolveModelSelection', () => {
     })
   })
 
-  it('模型插件被禁用 → MODEL_PROVIDER_MISSING', async () => {
+  it('模型插件被禁用（已安装）→ MODEL_PROVIDER_MISSING，提示"已禁用"', async () => {
     const deps = makeDeps({ pluginEnabled: false })
-    await expect(resolveModelSelection(deps, 'u1', undefined, 'cfg-1')).rejects.toMatchObject({
-      name: 'BizError',
-      code: ErrorCode.MODEL_PROVIDER_MISSING,
-    })
+    const err = await resolveModelSelection(deps, 'u1', undefined, 'cfg-1').catch((e) => e)
+    expect(err).toBeInstanceOf(BizError)
+    expect(err.code).toBe(ErrorCode.MODEL_PROVIDER_MISSING)
+    expect(err.message).toContain('已禁用')
+  })
+
+  it('模型插件未安装（服务抛 PLUGIN_NOT_FOUND）→ PLUGIN_NOT_FOUND，提示"未安装"而非误报"已禁用"', async () => {
+    const deps = makeDeps({ pluginInstalled: false })
+    const err = await resolveModelSelection(deps, 'u1', undefined, 'cfg-1').catch((e) => e)
+    expect(err).toBeInstanceOf(BizError)
+    expect(err.code).toBe(ErrorCode.PLUGIN_NOT_FOUND)
+    expect(err.message).toContain('未安装')
+    expect(err.message).not.toContain('已禁用')
   })
 
   it('模型插件未在运行（runtime 非 STARTED）→ MODEL_PROVIDER_MISSING', async () => {

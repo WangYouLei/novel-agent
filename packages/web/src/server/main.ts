@@ -28,7 +28,7 @@ export async function bootstrap(): Promise<NestExpressApplication> {
   app.useGlobalFilters(new BizErrorFilter())
   app.enableCors()
 
-  // 计费 hook 定义（注入时机在 listen 之后：CordisHost.onModuleInit 已完成、ModelService 已注册）
+  // 计费 hook 定义（NestFactory.create 时各模块 init 已完成：CordisHost 已加载插件、ModelService 已注册）
   const config = app.get<AppConfig>(APP_CONFIG)
   const billing = app.get(BillingService)
   const sessionService = app.get(SessionService)
@@ -63,10 +63,8 @@ export async function bootstrap(): Promise<NestExpressApplication> {
     logger.log(`前端静态资源目录：${clientDir}`)
   }
 
-  // Nest 启动完成（CordisHost.onModuleInit 已加载插件、ModelService 已注册），开始监听
-  await app.listen(config.port)
-
-  // 注入计费 hook + 订阅模型调用事件（摘要化写库，ADR-011）
+  // 注入计费 hook + 订阅模型调用事件（摘要化写库，ADR-011）；
+  // 必须在 listen 之前完成，消除"已监听但计费未初始化"的短窗口（评审 L16）
   cordisHost.setBillingHook(billingHook)
   cordisHost.root.on('model-call-finished', (event) => {
     if (!event.sessionId || !event.userId) return
@@ -87,6 +85,9 @@ export async function bootstrap(): Promise<NestExpressApplication> {
       })
       .catch((err) => logger.error(`模型调用记录失败：${(err as Error).message}`))
   })
+
+  // 开始监听（此时计费 hook 与调用记录订阅已就绪）
+  await app.listen(config.port)
 
   logger.log(`NovelAgent 服务已启动：http://localhost:${config.port}`)
   return app

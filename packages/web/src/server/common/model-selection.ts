@@ -20,6 +20,7 @@ export interface ModelSelectionDeps {
  *
  * @throws BAD_REQUEST            显式自定义模型未选配置
  * @throws MODEL_CONFIG_INVALID   模型配置不存在
+ * @throws PLUGIN_NOT_FOUND       模型插件未安装
  * @throws MODEL_PROVIDER_MISSING 模型插件被禁用或未运行
  */
 export async function resolveModelSelection(
@@ -38,10 +39,18 @@ export async function resolveModelSelection(
     const config = await deps.modelConfigService.getDecrypted(userId, modelConfigId)
 
     // 校验对应模型插件可用（验收标准 5：禁用模型插件 → 明确提示缺少模型提供者）
+    // 区分"未安装"与"已禁用"两种状态，避免误报（评审 L13）：
+    // - 未安装：getByPluginId 抛 PLUGIN_NOT_FOUND → 透出未安装语义的明确提示
+    // - 已禁用：正常返回但 enabled=false → 保持现有"已禁用"提示
     const pluginRecord = await deps.pluginRegistry
       .getByPluginId(userId, config.pluginId)
-      .catch(() => undefined)
-    if (!pluginRecord?.enabled) {
+      .catch((err) => {
+        if (err instanceof BizError && err.code === ErrorCode.PLUGIN_NOT_FOUND) {
+          throw new BizError(ErrorCode.PLUGIN_NOT_FOUND, `模型插件 [${config.pluginId}] 未安装，请先安装`)
+        }
+        throw err
+      })
+    if (!pluginRecord.enabled) {
       throw new BizError(
         ErrorCode.MODEL_PROVIDER_MISSING,
         `模型插件 [${config.pluginId}] 已禁用，缺少模型提供者，请先启用`,

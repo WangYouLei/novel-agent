@@ -18,14 +18,32 @@ async function main(): Promise<void> {
   await app.listen(port)
   logger.log(`插件市场服务已启动：http://localhost:${port}`)
 
-  // 优雅退出
+  // 优雅退出：成功退出码 0，失败记录日志并以退出码 1 退出（原 void 会吞掉 rejection，评审 L15）
+  let shuttingDown = false
   const shutdown = async (signal: string) => {
+    if (shuttingDown) return // 防重入：信号连续触发只处理一次
+    shuttingDown = true
     logger.log(`收到 ${signal}，正在关闭...`)
     await app.close()
     process.exit(0)
   }
-  process.on('SIGINT', () => void shutdown('SIGINT'))
-  process.on('SIGTERM', () => void shutdown('SIGTERM'))
+  const gracefulShutdown = (signal: string) => {
+    shutdown(signal).catch((err) => {
+      logger.error(`进程退出失败：${(err as Error).stack ?? err}`)
+      process.exit(1)
+    })
+  }
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'))
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
+
+  // 进程级兜底日志：未捕获异常按 Node 最佳实践以退出码 1 退出；未处理 Promise 拒绝仅记录不退出
+  process.on('uncaughtException', (err) => {
+    logger.error(`未捕获异常：${err.stack ?? err}`)
+    process.exit(1)
+  })
+  process.on('unhandledRejection', (reason) => {
+    logger.error(`未处理的 Promise 拒绝：${(reason as Error)?.stack ?? reason}`)
+  })
 }
 
 main().catch((err) => {

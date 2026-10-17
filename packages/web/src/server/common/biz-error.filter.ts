@@ -27,7 +27,14 @@ export class BizErrorFilter implements ExceptionFilter {
     let payload: ApiResponse<null>
 
     if (exception instanceof BizError) {
-      status = exception.code >= 400 && exception.code < 500 ? exception.code : HttpStatus.BAD_REQUEST
+      // 5xx 级业务错误（如 INTERNAL_ERROR）按 HTTP 500 返回，客户端与监控可区分（评审 L3）；
+      // 4xx 业务码透传，1xxx/2xxx 业务码维持原有 400 映射
+      status =
+        exception.code >= 500 && exception.code < 600
+          ? HttpStatus.INTERNAL_SERVER_ERROR
+          : exception.code >= 400 && exception.code < 500
+            ? exception.code
+            : HttpStatus.BAD_REQUEST
       payload = { code: exception.code, message: exception.message, data: null }
       this.logger.warn(`业务错误 [${exception.code}] ${exception.message}`)
     } else if (exception instanceof HttpException) {
