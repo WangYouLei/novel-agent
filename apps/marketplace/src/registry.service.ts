@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { Injectable, Logger, type OnModuleInit } from '@nestjs/common'
+import { ForbiddenException, Injectable, Logger, type OnModuleInit } from '@nestjs/common'
 import semver from 'semver'
 import {
   findPluginRootDir,
@@ -44,12 +44,35 @@ interface RegistryPlugin {
   configSchema: PluginConfigField[]
   dependencies: Record<string, string>
   readme?: string
+  /** 官方内置插件标记（seed 自 packages/plugins/）：其 id 为保留字，禁止第三方发布覆盖（评审 H2） */
+  official?: boolean
   /** 按发布时间倒序（versions[0] 为最新） */
   versions: RegistryVersion[]
 }
 
 interface RegistryFile {
   plugins: RegistryPlugin[]
+}
+
+/** 非 string 字段（存量毒数据）归一为文本，避免 toLowerCase 崩溃（评审 M6） */
+function toText(value: unknown): string {
+  return typeof value === 'string' ? value : String(value ?? '')
+}
+
+/** 非字符串或非法 semver 一律视为非法版本（存量毒数据兜底） */
+function isValidSemver(version: unknown): version is string {
+  return typeof version === 'string' && !!semver.valid(version)
+}
+
+/**
+ * 版本倒序安全比较器（publish 排序用）：
+ * 双方均合法时按倒序比较；非法 semver（存量毒数据）视为最低版本排在最后，不抛错（评审 M6）
+ */
+function compareVersionDesc(a: string, b: string): number {
+  if (isValidSemver(a) && isValidSemver(b)) return semver.gt(b, a) ? 1 : -1
+  if (isValidSemver(a)) return -1
+  if (isValidSemver(b)) return 1
+  return 0
 }
 
 @Injectable()
@@ -87,10 +110,11 @@ export class MarketRegistryService implements OnModuleInit {
     const filtered = this.registry.plugins.filter((p) => {
       if (category && p.type !== category) return false
       if (!kw) return true
+      // 存量毒数据兜底（评审 M6）：非 string 字段经 String() 归一后再匹配，合法数据行为不变
       return (
-        p.pluginId.toLowerCase().includes(kw) ||
-        p.displayName.toLowerCase().includes(kw) ||
-        (p.description ?? '').toLowerCase().includes(kw)
+        toText(p.pluginId).toLowerCase().includes(kw) ||
+        toText(p.displayName).toLowerCase().includes(kw) ||
+        toText(p.description).toLowerCase().includes(kw)
       )
     })
     const start = (page - 1) * size
@@ -136,6 +160,8 @@ export class MarketRegistryService implements OnModuleInit {
       const plugin = this.registry.plugins.find((p) => p.pluginId === item.pluginId)
       const latest = plugin?.versions[0]
       if (!latest) continue
+      // 市场侧最新版本为非法 semver（存量毒数据）时跳过该插件，视为无更新，避免 semver.gt 抛错（评审 M6）
+      if (!isValidSemver(latest.version)) continue
       // 本地非法版本号按"有更新"处理，引导重装对齐
       const outdated = !semver.valid(item.version) || semver.gt(latest.version, item.version)
       if (outdated) {
@@ -164,12 +190,17 @@ export class MarketRegistryService implements OnModuleInit {
       fs.rmSync(tempDir, { recursive: true, force: true })
     }
 
+    const existing = this.registry.plugins.find((p) => p.pluginId === manifest.pluginId)
+    // 官方插件 id 保留字（评审 H2）：官方内置插件（official 标记，源自 packages/plugins/ seed）禁止第三方发布覆盖
+    if (existing?.official) {
+      throw new ForbiddenException(`禁止发布：${manifest.pluginId} 为官方插件 id，不可被第三方覆盖或抢注`)
+    }
+
     // 重新打包为标准 zip 存储（统一打包行为，去除多余文件依赖）
     const normalizedZip = this.normalizeZip(zipBuffer)
     fs.mkdirSync(path.dirname(this.zipPath(manifest.pluginId, manifest.version)), { recursive: true })
     fs.writeFileSync(this.zipPath(manifest.pluginId, manifest.version), normalizedZip)
 
-    const existing = this.registry.plugins.find((p) => p.pluginId === manifest.pluginId)
     if (existing) {
       existing.displayName = manifest.displayName
       existing.type = manifest.type
@@ -187,8 +218,8 @@ export class MarketRegistryService implements OnModuleInit {
         },
         ...existing.versions.filter((v) => v.version !== manifest.version),
       ]
-      // 保持版本倒序
-      existing.versions.sort((a, b) => (semver.gt(b.version, a.version) ? 1 : -1))
+      // 保持版本倒序（安全比较器：存量非法 semver 视为最低版本排在最后，评审 M6）
+      existing.versions.sort((a, b) => compareVersionDesc(a.version, b.version))
     } else {
       this.registry.plugins.push({
         pluginId: manifest.pluginId,
@@ -226,6 +257,8 @@ export class MarketRegistryService implements OnModuleInit {
         fs.mkdirSync(path.dirname(this.zipPath(manifest.pluginId, manifest.version)), { recursive: true })
         fs.writeFileSync(this.zipPath(manifest.pluginId, manifest.version), zipDirectory(dir))
         if (existing) {
+          // packages/plugins/ 来源即官方内置：统一打 official 标记（id 保留字生效，含历史上被抢注的同名条目）
+          existing.official = true
           existing.versions.unshift({
             version: manifest.version,
             publishedAt: new Date().toISOString(),
@@ -241,6 +274,7 @@ export class MarketRegistryService implements OnModuleInit {
             author: manifest.author,
             configSchema: manifest.configSchema,
             dependencies: manifest.dependencies,
+            official: true,
             versions: [
               { version: manifest.version, publishedAt: new Date().toISOString(), changelog: '官方内置插件', downloads: 0 },
             ],

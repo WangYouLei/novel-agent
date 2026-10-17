@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpCode,
   Inject,
   NotFoundException,
@@ -11,6 +12,7 @@ import {
   Query,
   Res,
   StreamableFile,
+  UnauthorizedException,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common'
@@ -89,10 +91,38 @@ export class MarketController {
     return this.registry.checkUpdates(body.installed ?? [])
   }
 
-  /** 发布插件 zip（multipart 字段名 file；内存暂存 + 大小上限） */
+  /**
+   * 发布鉴权（评审 H2）：
+   * - 共享令牌来自环境变量 MARKET_PUBLISH_TOKEN，请求头 Authorization: Bearer <token>（兼容裸 token 值）
+   * - 环境变量未配置时默认拒绝所有发布（fail-closed）
+   * 独立成静态方法便于单测（不依赖 Nest 运行时）
+   */
+  static validatePublishAuth(authorization?: string): void {
+    const expected = process.env.MARKET_PUBLISH_TOKEN
+    if (!expected) {
+      throw new UnauthorizedException(
+        '发布功能未开放：请先为市场服务配置环境变量 MARKET_PUBLISH_TOKEN（共享发布令牌）',
+      )
+    }
+    const token = authorization?.startsWith('Bearer ')
+      ? authorization.slice('Bearer '.length).trim()
+      : (authorization ?? '').trim()
+    if (!token || token !== expected) {
+      throw new UnauthorizedException(
+        '发布鉴权失败：请在请求头 Authorization: Bearer <token> 携带环境变量 MARKET_PUBLISH_TOKEN 配置的发布令牌',
+      )
+    }
+  }
+
+  /** 发布插件 zip（multipart 字段名 file；内存暂存 + 大小上限；需 MARKET_PUBLISH_TOKEN 鉴权，评审 H2） */
   @Post('publish')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: LIMITS.PLUGIN_ZIP_MAX_BYTES } }))
-  publish(@UploadedFile() file: Express.Multer.File | undefined, @Body('changelog') changelog?: string) {
+  publish(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body('changelog') changelog?: string,
+    @Headers('authorization') authorization?: string,
+  ) {
+    MarketController.validatePublishAuth(authorization)
     if (!file || !file.buffer?.length) {
       throw new BadRequestException('缺少上传文件（multipart 字段名应为 file）')
     }

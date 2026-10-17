@@ -20,6 +20,14 @@ interface ServiceCallPayload {
 }
 
 /**
+ * Bridge 服务调用白名单（评审 H5，默认拒绝）：
+ * - key 格式为 'serviceId.method'；空白名单起步，未命中的 service-call 一律拒绝
+ * - 前端当前无页面实际调用 bridge.call（仅 setToken 与事件订阅），本能力为预留
+ * - 需要放行某个调用时在此显式追加对应 key
+ */
+export const BRIDGE_CALL_WHITELIST: readonly string[] = []
+
+/**
  * 前后端 Bridge 网关（文档 2.2 / 4.7，ADR-005）：
  * - WebSocket 双向桥接两个 Cordis Context
  * - 上行：前端 'service-call' → 后端 Cordis 服务代理调用
@@ -70,6 +78,16 @@ export class BridgeGateway implements OnGatewayInit, OnGatewayConnection {
   /** 前端 → 后端：Cordis 服务代理调用（前端 Bridge 插件的 remote-call 通道） */
   @SubscribeMessage(BRIDGE_EVENTS.SERVICE_CALL)
   async onServiceCall(client: Socket, payload: ServiceCallPayload): Promise<unknown> {
+    // 默认拒绝（评审 H5）：白名单未命中的调用在触达 Cordis 服务前一律拒绝
+    const key = `${payload.serviceId}.${payload.method}`
+    if (!BRIDGE_CALL_WHITELIST.includes(key)) {
+      this.logger.warn(`service-call ${key} 被拒绝：bridge 调用未放行（白名单默认关闭）`)
+      return {
+        callId: payload.callId,
+        ok: false,
+        error: `bridge 调用未放行：${key}，请在服务端 BRIDGE_CALL_WHITELIST 白名单中显式配置`,
+      }
+    }
     const started = Date.now()
     try {
       const service = this.cordisHost.get<Record<string, unknown>>(payload.serviceId)

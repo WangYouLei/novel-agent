@@ -28,7 +28,7 @@ export class NovelService {
 
   async create(userId: string, req: CreateNovelRequest): Promise<NovelDto> {
     if (!req.title?.trim()) throw new BizError(ErrorCode.BAD_REQUEST, '小说标题不能为空')
-    if (req.stylePackId) await this.ensureStylePack(req.stylePackId)
+    if (req.stylePackId) await this.ensureStylePack(userId, req.stylePackId)
 
     const novel = await this.prisma.novel.create({
       data: {
@@ -45,7 +45,7 @@ export class NovelService {
 
   async update(userId: string, novelId: string, req: UpdateNovelRequest): Promise<NovelDto> {
     await this.ensureOwned(userId, novelId)
-    if (req.stylePackId) await this.ensureStylePack(req.stylePackId)
+    if (req.stylePackId) await this.ensureStylePack(userId, req.stylePackId)
 
     const novel = await this.prisma.novel.update({
       where: { id: novelId },
@@ -71,8 +71,14 @@ export class NovelService {
     if (!novel) throw new BizError(ErrorCode.NOT_FOUND, '小说不存在')
   }
 
-  private async ensureStylePack(stylePackId: string) {
-    const pack = await this.prisma.stylePack.findFirst({ where: { id: stylePackId, deleted: false } })
+  /**
+   * 确认风格包存在且当前用户可用（越权校验，评审 H6）：
+   * 共享包（userId 为 null）任何人可用；私人包仅归属者可用
+   */
+  private async ensureStylePack(userId: string, stylePackId: string) {
+    const pack = await this.prisma.stylePack.findFirst({
+      where: { AND: [{ id: stylePackId, deleted: false }, { OR: [{ userId: null }, { userId }] }] },
+    })
     if (!pack) throw new BizError(ErrorCode.STYLE_PACK_NOT_FOUND, '风格包不存在')
   }
 
