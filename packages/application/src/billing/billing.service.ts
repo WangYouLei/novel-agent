@@ -21,15 +21,21 @@ export class BillingService {
     if (params.amount <= 0) return ''
 
     return this.prisma.$transaction(async (tx) => {
-      const user = await tx.user.findUnique({ where: { id: params.userId } })
-      if (!user) throw new BizError(ErrorCode.NOT_FOUND, '用户不存在')
-      if (user.credits < params.amount) {
-        throw new BizError(ErrorCode.INSUFFICIENT_CREDITS, `积分不足（当前 ${user.credits}，需要 ${params.amount}）`)
-      }
-      await tx.user.update({
-        where: { id: params.userId },
+      // 条件更新原子扣减：余额足够（credits >= amount）才执行，
+      // 避免"读余额 → 判断 → 扣减"在并发下把余额扣成负数
+      const res = await tx.user.updateMany({
+        where: { id: params.userId, credits: { gte: params.amount } },
         data: { credits: { decrement: params.amount } },
       })
+      if (res.count === 0) {
+        // 条件未命中：区分用户不存在与余额不足，保持原有错误语义
+        const user = await tx.user.findUnique({ where: { id: params.userId } })
+        if (!user) throw new BizError(ErrorCode.NOT_FOUND, '用户不存在')
+        throw new BizError(
+          ErrorCode.INSUFFICIENT_CREDITS,
+          `积分不足（当前 ${user.credits}，需要 ${params.amount}）`,
+        )
+      }
       const log = await tx.creditLog.create({
         data: {
           userId: params.userId,

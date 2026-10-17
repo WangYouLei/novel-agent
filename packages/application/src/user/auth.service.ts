@@ -31,28 +31,35 @@ export class AuthService {
       throw new BizError(ErrorCode.BAD_REQUEST, `密码至少 ${LIMITS.PASSWORD_MIN} 位`)
     }
 
-    const existing = await this.prisma.user.findUnique({ where: { username } })
-    if (existing) {
-      throw new BizError(ErrorCode.USERNAME_TAKEN, '用户名已被占用')
-    }
-
     const passwordHash = await bcrypt.hash(password, 10)
-    const user = await this.prisma.user.create({
-      data: {
-        username,
-        passwordHash,
-        credits: CREDIT_POLICY.REGISTER_BONUS,
-      },
-    })
-    // 注册赠送积分记入流水
-    await this.prisma.creditLog.create({
-      data: {
-        userId: user.id,
-        amount: CREDIT_POLICY.REGISTER_BONUS,
-        type: 'ADMIN_ADJUST',
-        description: '注册赠送',
-      },
-    })
+    // 用户名唯一性依赖数据库唯一约束（并发注册重名触发 P2002，统一转译为业务错误，替代预查询判断）
+    // 用户与注册赠送流水放入同一事务，保证事务完整性
+    const user = await this.prisma
+      .$transaction(async (tx) => {
+        const created = await tx.user.create({
+          data: {
+            username,
+            passwordHash,
+            credits: CREDIT_POLICY.REGISTER_BONUS,
+          },
+        })
+        // 注册赠送积分记入流水
+        await tx.creditLog.create({
+          data: {
+            userId: created.id,
+            amount: CREDIT_POLICY.REGISTER_BONUS,
+            type: 'ADMIN_ADJUST',
+            description: '注册赠送',
+          },
+        })
+        return created
+      })
+      .catch((err: unknown) => {
+        if ((err as { code?: string }).code === 'P2002') {
+          throw new BizError(ErrorCode.USERNAME_TAKEN, '用户名已被占用')
+        }
+        throw err
+      })
     return this.toUserDto(user)
   }
 
@@ -96,35 +103,40 @@ export class AuthService {
     if (!user) throw new BizError(ErrorCode.NOT_FOUND, '用户不存在')
 
     const now = new Date()
-    if (user.lastDailyClaim) {
-      const last = new Date(user.lastDailyClaim)
-      const sameDay =
-        last.getFullYear() === now.getFullYear() &&
-        last.getMonth() === now.getMonth() &&
-        last.getDate() === now.getDate()
-      if (sameDay) {
-        throw new BizError(ErrorCode.DAILY_ALREADY_CLAIMED, '今天已领取过每日积分')
-      }
-    }
+    // 今日零点（保持原有本地时区口径，时区 L10 问题不在本批处理）
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
-    const [updated] = await this.prisma.$transaction([
-      this.prisma.user.update({
-        where: { id: userId },
+    // 原子条件更新：未领过（lastDailyClaim 为 null）或上次领取早于今日零点才允许领取，
+    // 条件不匹配（count=0）即当天已领取，避免"先查后改"竞态导致重复发放
+    const credits = await this.prisma.$transaction(async (tx) => {
+      const res = await tx.user.updateMany({
+        where: {
+          id: userId,
+          OR: [{ lastDailyClaim: null }, { lastDailyClaim: { lt: startOfDay } }],
+        },
         data: {
           credits: { increment: CREDIT_POLICY.DAILY_CLAIM_AMOUNT },
           lastDailyClaim: now,
         },
-      }),
-      this.prisma.creditLog.create({
+      })
+      if (res.count === 0) {
+        throw new BizError(ErrorCode.DAILY_ALREADY_CLAIMED, '今天已领取过每日积分')
+      }
+      await tx.creditLog.create({
         data: {
           userId,
           amount: CREDIT_POLICY.DAILY_CLAIM_AMOUNT,
           type: 'DAILY_GIFT',
           description: '每日领取',
         },
-      }),
-    ])
-    return { claimed: CREDIT_POLICY.DAILY_CLAIM_AMOUNT, credits: updated.credits }
+      })
+      const latest = await tx.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { credits: true },
+      })
+      return latest.credits
+    })
+    return { claimed: CREDIT_POLICY.DAILY_CLAIM_AMOUNT, credits }
   }
 
   async listCreditLogs(userId: string, page = 1, pageSize = 20): Promise<CreditLogDto[]> {

@@ -156,6 +156,18 @@ export class WritingController {
     return this.outlineService.save(userId, body.novelId, body.structure, body.generatedBy)
   }
 
+  /** 激活历史大纲版本：将指定版本设为 active，同小说其余版本置为 inactive */
+  @Post('outline/activate')
+  async activateOutline(
+    @CurrentUser() userId: string,
+    @Body() body: { outlineId: string },
+  ): Promise<OutlineDto> {
+    if (!body?.outlineId) {
+      throw new BizError(ErrorCode.BAD_REQUEST, '大纲 id 不能为空')
+    }
+    return this.outlineService.activate(userId, body.outlineId)
+  }
+
   @Get('outlines/:novelId')
   async listOutlines(
     @CurrentUser() userId: string,

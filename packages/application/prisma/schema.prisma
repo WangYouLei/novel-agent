@@ -255,6 +255,7 @@ model Outline {
   updatedAt        DateTime @updatedAt
 
   @@index([novelId, isActive])
+  @@unique([novelId, version])
 }
 
 // ========== 7.3.6 插件管理与模型配置 ==========

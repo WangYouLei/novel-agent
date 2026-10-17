@@ -27,26 +27,28 @@ export class OutlineService {
   ): Promise<OutlineDto> {
     await this.ensureNovelOwned(userId, novelId)
 
-    const last = await this.prisma.outline.findFirst({
-      where: { novelId, deleted: false },
-      orderBy: { version: 'desc' },
-      select: { version: true },
-    })
-
-    // 事务顺序：[updateMany 置旧版 inactive, create 新版]，取第二个结果
-    const [, created] = await this.prisma.$transaction([
-      this.prisma.outline.updateMany({ where: { novelId, isActive: true }, data: { isActive: false } }),
-      this.prisma.outline.create({
+    // 版本号计算与创建放入同一交互式事务：配合 (novelId, version) 唯一约束，杜绝并发下版本号重复。
+    // max 统计不排除软删记录（唯一约束覆盖所有行，取全量 max 避免与软删版本撞号）
+    const created = await this.prisma.$transaction(async (tx) => {
+      const agg = await tx.outline.aggregate({
+        _max: { version: true },
+        where: { novelId },
+      })
+      await tx.outline.updateMany({
+        where: { novelId, isActive: true },
+        data: { isActive: false },
+      })
+      return tx.outline.create({
         data: {
           novelId,
-          version: (last?.version ?? 0) + 1,
+          version: (agg._max.version ?? 0) + 1,
           isActive: true,
           structure: structure as never,
           generatedBy,
           generationParams: generationParams as never,
         },
-      }),
-    ])
+      })
+    })
     return this.toDto(created)
   }
 
