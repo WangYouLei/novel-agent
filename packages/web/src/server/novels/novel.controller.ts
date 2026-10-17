@@ -3,7 +3,6 @@ import { ChapterService, NovelService, StylePackService } from '@novelagent/appl
 import type {
   ChapterDto,
   CreateChapterRequest,
-  CreateNovelRequest,
   NovelDto,
   UpdateChapterRequest,
   UpdateNovelRequest,
@@ -11,6 +10,8 @@ import type {
 import { JwtGuard } from '../common/jwt.guard'
 import { CurrentUser } from '../common/current-user.decorator'
 import { CordisHost } from '../cordis.host'
+import { CreateNovelRequestDto } from '../common/dto/novel.dto'
+import { BodyDtoPipe } from '../common/dto/dto.pipe'
 
 /** 小说管理控制器（PRD 5.2：创建小说 → 选风格 → 进入创作） */
 @Controller('api/novels')
@@ -34,7 +35,10 @@ export class NovelController {
   }
 
   @Post()
-  async create(@CurrentUser() userId: string, @Body() body: CreateNovelRequest): Promise<NovelDto> {
+  async create(
+    @CurrentUser() userId: string,
+    @Body(new BodyDtoPipe(CreateNovelRequestDto)) body: CreateNovelRequestDto,
+  ): Promise<NovelDto> {
     return this.novelService.create(userId, body)
   }
 

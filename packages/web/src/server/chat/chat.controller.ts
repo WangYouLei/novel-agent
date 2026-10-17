@@ -30,6 +30,8 @@ import { CurrentUser } from '../common/current-user.decorator'
 import { CordisHost } from '../cordis.host'
 import { BridgeGateway } from '../gateway/bridge.gateway'
 import { ChatDispatcherService, type DispatchPluginInfo } from './chat-dispatcher.service'
+import { SendChatMessageRequestDto } from '../common/dto/chat.dto'
+import { BodyDtoPipe } from '../common/dto/dto.pipe'
 
 /** 插件执行结果（assistant 消息 + 结果卡片元数据） */
 interface ExecOutcome {
@@ -95,7 +97,7 @@ export class ChatController {
   async send(
     @CurrentUser() userId: string,
     @Param('id') sessionId: string,
-    @Body() body: SendChatMessageRequest,
+    @Body(new BodyDtoPipe(SendChatMessageRequestDto)) body: SendChatMessageRequestDto,
   ): Promise<SendChatMessageResponse> {
     const content = (body.content ?? '').trim()
     const attachmentText = body.attachment?.text?.slice(0, LIMITS.CHAT_ATTACHMENT_MAX_CHARS)

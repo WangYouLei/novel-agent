@@ -7,6 +7,7 @@ import {
   PluginRegistryService,
   SessionService,
   StylePackService,
+  validatePluginConfig,
 } from '@novelagent/application'
 import type { FeatureExtensionPoint, FeatureRequest, ModelSelection } from '@novelagent/core'
 import {
@@ -89,6 +90,8 @@ export class WritingController {
       (pluginRecord.config as Record<string, unknown>) ?? {},
     )
     const requestConfig = { ...mergedConfig, ...(body.pluginConfig ?? {}) }
+    // 请求级 pluginConfig 覆盖后重新过 schema 校验（非法值 400，防止 NaN/越界值传入插件）
+    validatePluginConfig(schema, requestConfig)
     const stylePack = await this.stylePackService.getForNovel(body.novelId)
 
     const sessionId = await this.sessionService.createSession({

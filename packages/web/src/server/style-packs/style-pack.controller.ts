@@ -3,6 +3,7 @@ import {
   ModelConfigService,
   PluginRegistryService,
   StylePackService,
+  validatePluginConfig,
 } from '@novelagent/application'
 import type {
   StyleGeneratorExtensionPoint,
@@ -93,6 +94,8 @@ export class StylePackController {
       (pluginRecord.config as Record<string, unknown>) ?? {},
     )
     const config = { ...mergedConfig, ...(body.pluginConfig ?? {}) }
+    // 请求级 pluginConfig 覆盖后重新过 schema 校验（非法值 400，防止 NaN/越界值传入插件）
+    validatePluginConfig(runtime.manifest.configSchema, config)
 
     // 4. 执行插件并保存为用户风格包
     this.logger.log(`风格生成开始：用户=${userId} 文本=${sourceText.length} 字 模型=${model.model}`)

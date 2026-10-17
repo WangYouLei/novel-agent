@@ -5,6 +5,50 @@ import {
   type PluginConfigField,
 } from '@novelagent/shared'
 
+/**
+ * 校验插件配置值是否满足 configSchema 声明（按类型分派，PRD 4.2）：
+ * - number：必须是有限数字（拒绝字符串数字 / NaN / Infinity），且在 min/max 范围内
+ * - string：必须是字符串（声明了 enum 时还须是可选值之一）
+ * - boolean：必须是布尔值
+ * - select：必须是字符串且命中 enum 可选值
+ * 未提供（null/undefined）的字段跳过（由 applyDefaults 补默认值）；schema 外的未知字段不校验、原样保留
+ * @throws BizError(BAD_REQUEST) 校验失败时抛出具体字段与原因
+ */
+export function validatePluginConfig(
+  schema: PluginConfigField[],
+  values: Record<string, unknown>,
+): void {
+  for (const field of schema) {
+    const value = values[field.key]
+    if (value == null) continue
+    if (field.type === 'number') {
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        throw new BizError(ErrorCode.BAD_REQUEST, `${field.name}必须是数字`)
+      }
+      if (field.min != null && value < field.min) {
+        throw new BizError(ErrorCode.BAD_REQUEST, `${field.name}不能小于 ${field.min}`)
+      }
+      if (field.max != null && value > field.max) {
+        throw new BizError(ErrorCode.BAD_REQUEST, `${field.name}不能大于 ${field.max}`)
+      }
+    } else if (field.type === 'boolean') {
+      if (typeof value !== 'boolean') {
+        throw new BizError(ErrorCode.BAD_REQUEST, `${field.name}必须是布尔值`)
+      }
+    } else if (field.type === 'string' || field.type === 'select') {
+      if (typeof value !== 'string') {
+        throw new BizError(ErrorCode.BAD_REQUEST, `${field.name}必须是字符串`)
+      }
+      if (field.enum && !field.enum.includes(value)) {
+        throw new BizError(
+          ErrorCode.BAD_REQUEST,
+          `${field.name}必须是以下之一：${field.enum.join('、')}`,
+        )
+      }
+    }
+  }
+}
+
 /** 插件目录扫描出的插件元数据（market-client 产出） */
 export interface PluginManifest {
   pluginId: string
@@ -155,7 +199,7 @@ export class PluginRegistryService {
     })
   }
 
-  /** 更新用户配置：按 schema 校验 key 合法性与数值范围（PRD 4.2） */
+  /** 更新用户配置：按 schema 校验类型与数值范围（PRD 4.2，校验规则见 validatePluginConfig） */
   async updateConfig(
     userId: string,
     pluginId: string,
@@ -164,18 +208,7 @@ export class PluginRegistryService {
   ) {
     await this.getByPluginId(userId, pluginId)
     const merged = this.applyDefaults(schema, config)
-    // 数值范围校验
-    for (const field of schema) {
-      if (field.type === 'number' && merged[field.key] != null) {
-        const v = Number(merged[field.key])
-        if (field.min != null && v < field.min) {
-          throw new BizError(ErrorCode.BAD_REQUEST, `${field.name} 不能小于 ${field.min}`)
-        }
-        if (field.max != null && v > field.max) {
-          throw new BizError(ErrorCode.BAD_REQUEST, `${field.name} 不能大于 ${field.max}`)
-        }
-      }
-    }
+    validatePluginConfig(schema, merged)
     await this.prisma.installedPlugin.update({
       where: { userId_pluginId: { userId, pluginId } },
       data: { config: merged as never },

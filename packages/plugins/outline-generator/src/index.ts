@@ -51,14 +51,12 @@ export default class OutlineGenerator extends FeatureExtensionPoint {
         return { success: false, error: { code: 'BAD_IDEA', message: '创意描述不能为空' } }
       }
 
-      // 2. 合并配置（Web 层已应用 schema 默认值，此处只做上限硬校验，PRD 4.3）
+      // 2. 合并配置（Web 层已应用 schema 默认值；此处对章节数做闭区间收敛兜底，PRD 4.3）
       const config = request.config ?? {}
-      const chapterCount = Math.min(
-        Number(config.chapterCount ?? 20),
-        LIMITS.MAX_CHAPTERS_PER_GENERATION,
-      )
-      if (chapterCount > Number(config.chapterCount ?? 20)) {
-        log(`章节数被服务端上限截断为 ${LIMITS.MAX_CHAPTERS_PER_GENERATION}`)
+      const rawChapterCount = Number(config.chapterCount ?? 20)
+      const chapterCount = clamp(rawChapterCount, 5, LIMITS.MAX_CHAPTERS_PER_GENERATION)
+      if (chapterCount !== rawChapterCount) {
+        log(`章节数被收敛为 ${chapterCount}（范围 5-${LIMITS.MAX_CHAPTERS_PER_GENERATION}）`)
       }
 
       // 3. 构建提示词（带进度上报）
@@ -161,6 +159,12 @@ export default class OutlineGenerator extends FeatureExtensionPoint {
     }
     return null
   }
+}
+
+/** 数值收敛到闭区间（配置可能被 UI 覆盖为越界值，NaN 等非法值收敛到下界） */
+function clamp(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min
+  return Math.min(Math.max(Math.round(value), min), max)
 }
 
 /** 从 markdown 代码块中提取 JSON 文本 */

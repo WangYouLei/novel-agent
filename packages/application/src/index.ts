@@ -10,7 +10,11 @@ export { BUILTIN_STYLE_PACKS } from './style-pack/builtin-packs'
 export { OutlineService } from './writing/outline.service'
 export { SessionService } from './writing/session.service'
 export { ChatService } from './chat/chat.service'
-export { PluginRegistryService, type PluginManifest } from './plugin/plugin-registry.service'
+export {
+  PluginRegistryService,
+  validatePluginConfig,
+  type PluginManifest,
+} from './plugin/plugin-registry.service'
 export { ModelConfigService } from './model-config/model-config.service'
 
 // 重导出 Prisma（web 层统一从本包引用，避免直接依赖 @prisma/client）

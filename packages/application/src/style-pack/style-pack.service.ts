@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client'
 import {
   BizError,
   ErrorCode,
+  validateStylePackContent,
   type StylePackDto,
   type StylePackContent,
   type UpdateStylePackRequest,
@@ -35,11 +36,14 @@ export class StylePackService {
     return this.toDto(pack)
   }
 
-  /** 更新：内置包只读（modifiable=false），其余可改 */
+  /** 更新：内置包只读（modifiable=false），其余可改；content 入库前做结构校验 */
   async update(userId: string, id: string, req: UpdateStylePackRequest): Promise<StylePackDto> {
     const pack = await this.getOwned(userId, id)
     if (!pack.modifiable) {
       throw new BizError(ErrorCode.FORBIDDEN, '内置风格包只读，可复制后修改')
+    }
+    if (req.content !== undefined) {
+      this.assertContentValid(req.content)
     }
     const updated = await this.prisma.stylePack.update({
       where: { id },
@@ -52,13 +56,14 @@ export class StylePackService {
     return this.toDto(updated)
   }
 
-  /** 保存插件生成的风格包（用户生成级，可自由修改，PRD 3.4） */
+  /** 保存插件生成的风格包（用户生成级，可自由修改，PRD 3.4）；content 入库前做结构校验 */
   async createGenerated(
     userId: string,
     name: string,
     content: StylePackContent,
     pluginId: string,
   ): Promise<StylePackDto> {
+    this.assertContentValid(content)
     const created = await this.prisma.stylePack.create({
       data: {
         userId,
@@ -120,6 +125,14 @@ export class StylePackService {
     const pack = await this.prisma.stylePack.findFirst({ where: { id, deleted: false, userId } })
     if (!pack) throw new BizError(ErrorCode.STYLE_PACK_NOT_FOUND, '风格包不存在或不属于当前用户')
     return pack
+  }
+
+  /** content 结构校验（规则见 shared 的 validateStylePackContent），失败抛 BAD_REQUEST */
+  private assertContentValid(content: unknown): void {
+    const errors = validateStylePackContent(content)
+    if (errors.length > 0) {
+      throw new BizError(ErrorCode.BAD_REQUEST, `风格包内容不合法：${errors.join('；')}`)
+    }
   }
 
   /** 启动 seed：内置风格包幂等写入（按 builtinKey upsert，保持内容与代码一致） */

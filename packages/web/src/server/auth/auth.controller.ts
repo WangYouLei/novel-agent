@@ -4,10 +4,12 @@ import {
   PluginRegistryService,
   type PluginManifest,
 } from '@novelagent/application'
-import type { AuthResponse, DailyClaimResult, RegisterRequest, LoginRequest, UserDto } from '@novelagent/shared'
+import type { AuthResponse, DailyClaimResult, UserDto } from '@novelagent/shared'
 import { JwtGuard } from '../common/jwt.guard'
 import { CurrentUser } from '../common/current-user.decorator'
 import { CordisHost } from '../cordis.host'
+import { LoginRequestDto, RegisterRequestDto } from '../common/dto/auth.dto'
+import { BodyDtoPipe } from '../common/dto/dto.pipe'
 
 /**
  * 认证控制器：注册 / 登录（JWT）/ 当前用户 / 每日积分领取
@@ -22,7 +24,9 @@ export class AuthController {
   ) {}
 
   @Post('register')
-  async register(@Body() body: RegisterRequest): Promise<AuthResponse> {
+  async register(
+    @Body(new BodyDtoPipe(RegisterRequestDto)) body: RegisterRequestDto,
+  ): Promise<AuthResponse> {
     const user = await this.authService.register(body.username, body.password)
     await this.seedPlugins(user.id)
     const token = this.authService.signToken(user.id)
@@ -30,7 +34,7 @@ export class AuthController {
   }
 
   @Post('login')
-  async login(@Body() body: LoginRequest): Promise<AuthResponse> {
+  async login(@Body(new BodyDtoPipe(LoginRequestDto)) body: LoginRequestDto): Promise<AuthResponse> {
     const { user } = await this.authService.login(body.username, body.password)
     await this.seedPlugins(user.id)
     const token = this.authService.signToken(user.id)
