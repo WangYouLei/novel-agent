@@ -5,10 +5,7 @@ import {
   StylePackService,
   validatePluginConfig,
 } from '@novelagent/application'
-import type {
-  StyleGeneratorExtensionPoint,
-  ModelSelection,
-} from '@novelagent/core'
+import type { StyleGeneratorExtensionPoint } from '@novelagent/core'
 import {
   BizError,
   ErrorCode,
@@ -19,6 +16,7 @@ import {
 } from '@novelagent/shared'
 import { JwtGuard } from '../common/jwt.guard'
 import { CurrentUser } from '../common/current-user.decorator'
+import { resolveModelSelection } from '../common/model-selection'
 import { CordisHost } from '../cordis.host'
 
 /** 风格生成插件 id（首个 STYLE_GENERATOR 插件） */
@@ -88,7 +86,16 @@ export class StylePackController {
     }
 
     // 3. 组装插件选项（模型选择 + 合并 schema 默认值的插件配置）
-    const model = await this.resolveModelSelection(userId, body)
+    const model = await resolveModelSelection(
+      {
+        modelConfigService: this.modelConfigService,
+        pluginRegistry: this.pluginRegistry,
+        cordisHost: this.cordisHost,
+      },
+      userId,
+      body.providerId,
+      body.modelConfigId,
+    )
     const mergedConfig = this.pluginRegistry.applyDefaults(
       runtime.manifest.configSchema,
       (pluginRecord.config as Record<string, unknown>) ?? {},
@@ -109,46 +116,6 @@ export class StylePackController {
     const pack = await this.stylePackService.createGenerated(userId, name, content, STYLE_PLUGIN_ID)
     this.logger.log(`风格生成完成：pack=${pack.id}`)
     return pack
-  }
-
-  /** 解析模型选择：内置免费（mock）或用户自定义配置（解密注入） */
-  private async resolveModelSelection(
-    userId: string,
-    body: GenerateStylePackRequest,
-  ): Promise<ModelSelection> {
-    if (body.providerId === 'builtin') {
-      return { providerId: 'builtin', model: 'mock-v1' }
-    }
-
-    if (!body.modelConfigId) {
-      throw new BizError(ErrorCode.BAD_REQUEST, '使用自定义模型时必须选择模型配置')
-    }
-    const config = await this.modelConfigService.getDecrypted(userId, body.modelConfigId)
-
-    const pluginRecord = await this.pluginRegistry
-      .getByPluginId(userId, config.pluginId)
-      .catch(() => undefined)
-    if (!pluginRecord?.enabled) {
-      throw new BizError(
-        ErrorCode.MODEL_PROVIDER_MISSING,
-        `模型插件 [${config.pluginId}] 已禁用，缺少模型提供者，请先启用`,
-      )
-    }
-    const pluginRuntime = this.cordisHost.runtimes.get(config.pluginId)
-    if (!pluginRuntime || pluginRuntime.status !== 'STARTED') {
-      throw new BizError(ErrorCode.MODEL_PROVIDER_MISSING, `模型插件 [${config.pluginId}] 未在运行`)
-    }
-
-    return {
-      providerId: config.pluginId,
-      modelConfigId: config.id,
-      model: config.modelName,
-      providerConfig: {
-        apiKey: config.apiKey,
-        baseUrl: config.baseUrl ?? undefined,
-        model: config.modelName,
-      },
-    }
   }
 
   @Put(':id')

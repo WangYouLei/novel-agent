@@ -22,11 +22,11 @@ import {
   type ChatToolCall,
   type CreateChatSessionRequest,
   type OutlineStructure,
-  type SendChatMessageRequest,
   type SendChatMessageResponse,
 } from '@novelagent/shared'
 import { JwtGuard } from '../common/jwt.guard'
 import { CurrentUser } from '../common/current-user.decorator'
+import { resolveModelSelection } from '../common/model-selection'
 import { CordisHost } from '../cordis.host'
 import { BridgeGateway } from '../gateway/bridge.gateway'
 import { ChatDispatcherService, type DispatchPluginInfo } from './chat-dispatcher.service'
@@ -121,7 +121,16 @@ export class ChatController {
 
     // 调度（插件清单 + 模型 + 对话历史）
     const plugins = await this.collectPlugins(userId)
-    const model = await this.resolveModelSelection(userId, body)
+    const model = await resolveModelSelection(
+      {
+        modelConfigService: this.modelConfigService,
+        pluginRegistry: this.pluginRegistry,
+        cordisHost: this.cordisHost,
+      },
+      userId,
+      body.providerId,
+      body.modelConfigId,
+    )
     const history = await this.chatService.recentMessages(userId, sessionId)
 
     let toolCall: ChatToolCall | undefined
@@ -351,43 +360,6 @@ export class ChatController {
         stylePackId: pack.id,
       },
       content: `已从「${name}」提取风格包「${pack.name}」，可在风格包页面查看和使用。`,
-    }
-  }
-
-  /** 模型选择：builtin（规则调度，不耗积分）或自定义配置（LLM 调度，用户自己的 Key） */
-  private async resolveModelSelection(
-    userId: string,
-    body: SendChatMessageRequest,
-  ): Promise<ModelSelection> {
-    if (!body.providerId || body.providerId === 'builtin') {
-      return { providerId: 'builtin', model: 'mock-v1' }
-    }
-    if (!body.modelConfigId) {
-      throw new BizError(ErrorCode.BAD_REQUEST, '使用自定义模型时必须选择模型配置')
-    }
-    const config = await this.modelConfigService.getDecrypted(userId, body.modelConfigId)
-    const pluginRecord = await this.pluginRegistry
-      .getByPluginId(userId, config.pluginId)
-      .catch(() => undefined)
-    if (!pluginRecord?.enabled) {
-      throw new BizError(
-        ErrorCode.MODEL_PROVIDER_MISSING,
-        `模型插件 [${config.pluginId}] 已禁用，请先启用`,
-      )
-    }
-    const runtime = this.cordisHost.runtimes.get(config.pluginId)
-    if (!runtime || runtime.status !== 'STARTED') {
-      throw new BizError(ErrorCode.MODEL_PROVIDER_MISSING, `模型插件 [${config.pluginId}] 未在运行`)
-    }
-    return {
-      providerId: config.pluginId,
-      modelConfigId: config.id,
-      model: config.modelName,
-      providerConfig: {
-        apiKey: config.apiKey,
-        baseUrl: config.baseUrl ?? undefined,
-        model: config.modelName,
-      },
     }
   }
 

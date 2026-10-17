@@ -52,8 +52,14 @@ export default class OpenAIModelProvider extends ModelProvider {
           max_tokens: request.maxTokens,
           temperature: request.temperature,
         }),
+        // 外部模型调用 120s 超时（全链路超时治理，评审 M8/L7）
+        signal: AbortSignal.timeout(120_000),
       })
     } catch (err) {
+      // AbortSignal.timeout 超时抛出 name 为 TimeoutError 的 DOMException，转译为用户可读信息
+      if ((err as Error).name === 'TimeoutError' || (err as Error).name === 'AbortError') {
+        throw new BizError(ErrorCode.MODEL_CONFIG_INVALID, '模型接口请求超时（120 秒），请稍后重试')
+      }
       throw new BizError(
         ErrorCode.MODEL_CONFIG_INVALID,
         `模型接口无法连接：${(err as Error).message}（请检查 baseUrl 与网络）`,

@@ -73,7 +73,8 @@ export class ModelConfigService {
         isDefault: req.isDefault ?? false,
       },
     })
-    return this.toDto(created)
+    // installedPluginName 与 list() 对齐：直接复用上面已查到的插件记录
+    return this.toDto(created, plugin.name)
   }
 
   async update(userId: string, id: string, req: UpdateModelConfigRequest): Promise<ModelConfigDto> {
@@ -95,8 +96,10 @@ export class ModelConfigService {
         isDefault: req.isDefault,
         apiKeyEncrypted: req.apiKey?.trim() ? this.encrypt(req.apiKey.trim()) : undefined,
       },
+      // installedPluginName 与 list() 对齐：update 同样带回插件名（评审 M12）
+      include: { installedPlugin: { select: { name: true } } },
     })
-    return this.toDto(updated)
+    return this.toDto(updated, updated.installedPlugin.name)
   }
 
   async remove(userId: string, id: string): Promise<void> {
@@ -139,20 +142,23 @@ export class ModelConfigService {
     }
   }
 
-  private toDto(c: {
-    id: string
-    installedPluginId: string
-    name: string
-    baseUrl: string | null
-    apiKeyEncrypted: string
-    modelName: string
-    isDefault: boolean
-    createdAt: Date
-  }): ModelConfigDto {
+  private toDto(
+    c: {
+      id: string
+      installedPluginId: string
+      name: string
+      baseUrl: string | null
+      apiKeyEncrypted: string
+      modelName: string
+      isDefault: boolean
+      createdAt: Date
+    },
+    installedPluginName: string | null,
+  ): ModelConfigDto {
     return {
       id: c.id,
       installedPluginId: c.installedPluginId,
-      installedPluginName: null,
+      installedPluginName,
       name: c.name,
       baseUrl: c.baseUrl,
       apiKeyMasked: maskApiKey(this.decrypt(c.apiKeyEncrypted)),

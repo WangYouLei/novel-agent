@@ -516,7 +516,9 @@ async function send() {
     const result = await post<SendChatMessageResponse>(`/api/chat/sessions/${session.id}/messages`, {
       content,
       attachment: att ?? undefined,
-      providerId: modelMode.value === 'builtin' ? 'builtin' : 'openai-model',
+      // 内置模式显式传 'builtin'；自定义模式只传 modelConfigId，
+      // providerId 由后端按配置解析（不硬编码插件 id，评审 L17）
+      providerId: modelMode.value === 'builtin' ? 'builtin' : undefined,
       modelConfigId: modelMode.value === 'builtin' ? undefined : modelConfigId.value,
     })
     messages.value[messages.value.length - 1] = result.userMessage

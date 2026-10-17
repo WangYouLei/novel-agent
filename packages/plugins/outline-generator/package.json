@@ -5,7 +5,8 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsup"
+    "build": "tsup",
+    "test": "vitest run"
   },
   "novelagent": {
     "id": "outline-generator",
@@ -64,6 +65,7 @@
     "@novelagent/shared": "workspace:*"
   },
   "devDependencies": {
-    "tsup": "^8.3.0"
+    "tsup": "^8.3.0",
+    "vitest": "^2.1.0"
   }
 }

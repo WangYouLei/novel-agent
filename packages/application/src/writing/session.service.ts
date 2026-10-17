@@ -79,14 +79,6 @@ export class SessionService {
     return call.id
   }
 
-  /** 取会话最新一次模型调用的统计（生成接口返回用） */
-  async getLatestModelCall(sessionId: string) {
-    return this.prisma.modelCall.findFirst({
-      where: { sessionId },
-      orderBy: { createdAt: 'desc' },
-    })
-  }
-
   /** 清理超过保留期的调用记录（ADR-011：90 天；启动时执行一次） */
   async cleanupExpiredModelCalls(): Promise<number> {
     const cutoff = new Date(Date.now() - LIMITS.MODEL_CALL_RETENTION_DAYS * 24 * 3600 * 1000)

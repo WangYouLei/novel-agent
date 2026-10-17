@@ -9,7 +9,7 @@ import {
   StylePackService,
   validatePluginConfig,
 } from '@novelagent/application'
-import type { FeatureExtensionPoint, FeatureRequest, ModelSelection } from '@novelagent/core'
+import type { FeatureExtensionPoint, FeatureRequest, FeatureResult, ModelSelection } from '@novelagent/core'
 import {
   BizError,
   ErrorCode,
@@ -22,6 +22,7 @@ import {
 } from '@novelagent/shared'
 import { JwtGuard } from '../common/jwt.guard'
 import { CurrentUser } from '../common/current-user.decorator'
+import { resolveModelSelection } from '../common/model-selection'
 import { CordisHost } from '../cordis.host'
 import { BridgeGateway } from '../gateway/bridge.gateway'
 
@@ -81,7 +82,16 @@ export class WritingController {
     }
 
     // 3. 解析模型选择（内置 mock 或用户自定义配置）
-    const modelSelection = await this.resolveModelSelection(userId, body)
+    const modelSelection = await resolveModelSelection(
+      {
+        modelConfigService: this.modelConfigService,
+        pluginRegistry: this.pluginRegistry,
+        cordisHost: this.cordisHost,
+      },
+      userId,
+      body.providerId,
+      body.modelConfigId,
+    )
 
     // 4. 组装 FeatureRequest
     const schema = runtime.manifest.configSchema
@@ -143,8 +153,7 @@ export class WritingController {
     await this.sessionService.finishSession(sessionId, 'COMPLETED', outline.logline)
     this.logger.log(`大纲生成完成：${outline.chapters.length} 章，总耗时 ${Date.now() - started}ms`)
 
-    const summary = await this.collectModelCall(sessionId, modelSelection)
-    return { sessionId, outline, modelCall: summary }
+    return { sessionId, outline, modelCall: this.toModelCallSummary(modelSelection, result.modelCall) }
   }
 
   /** 保存生成的大纲（PRD 5.2：用户确认后保存到小说） */
@@ -179,71 +188,25 @@ export class WritingController {
     return this.outlineService.listByNovel(userId, novelId)
   }
 
-  /** 解析模型选择：内置免费（mock）或用户自定义配置（解密注入，验收标准 7） */
-  private async resolveModelSelection(
-    userId: string,
-    body: GenerateOutlineRequest,
-  ): Promise<ModelSelection> {
-    if (body.providerId === 'builtin') {
-      return { providerId: 'builtin', model: 'mock-v1' }
-    }
-
-    // 自定义模型：必须提供 modelConfigId
-    if (!body.modelConfigId) {
-      throw new BizError(ErrorCode.BAD_REQUEST, '使用自定义模型时必须选择模型配置')
-    }
-    const config = await this.modelConfigService.getDecrypted(userId, body.modelConfigId)
-
-    // 校验对应模型插件可用（验收标准 5：禁用模型插件 → 明确提示缺少模型提供者）
-    const pluginRecord = await this.pluginRegistry
-      .getByPluginId(userId, config.pluginId)
-      .catch(() => undefined)
-    if (!pluginRecord?.enabled) {
-      throw new BizError(
-        ErrorCode.MODEL_PROVIDER_MISSING,
-        `模型插件 [${config.pluginId}] 已禁用，缺少模型提供者，请先启用`,
-      )
-    }
-    const pluginRuntime = this.cordisHost.runtimes.get(config.pluginId)
-    if (!pluginRuntime || pluginRuntime.status !== 'STARTED') {
-      throw new BizError(ErrorCode.MODEL_PROVIDER_MISSING, `模型插件 [${config.pluginId}] 未在运行`)
-    }
-
-    return {
-      providerId: config.pluginId,
-      modelConfigId: config.id,
-      model: config.modelName,
-      // 连接参数解密注入（API Key 不落日志，ADR 见 model-config 服务）
-      providerConfig: {
-        apiKey: config.apiKey,
-        baseUrl: config.baseUrl ?? undefined,
-        model: config.modelName,
-      },
-    }
-  }
-
-  /** 从数据库取本次会话的模型调用统计（model-call-finished 事件由 main.ts 统一写库） */
-  private async collectModelCall(
-    sessionId: string,
+  /**
+   * 组装响应中的模型调用摘要：直接消费 FeatureResult.modelCall（插件同步带回，评审 M4），
+   * 不再 sleep 等待异步统计落库；统计落库仍由 model-call-finished 事件驱动（见 main.ts）
+   */
+  private toModelCallSummary(
     selection: ModelSelection,
-  ): Promise<ModelCallSummary> {
-    try {
-      // 写库是异步的，稍等后查询最新一条调用记录
-      await new Promise((r) => setTimeout(r, 150))
-      const call = await this.sessionService.getLatestModelCall(sessionId)
-      if (call) {
-        return {
-          modelProvider: call.modelProvider,
-          modelName: call.modelName,
-          inputTokens: call.inputTokens,
-          outputTokens: call.outputTokens,
-          creditCost: call.creditCost,
-          durationMs: call.durationMs ?? 0,
-        }
+    call: FeatureResult['modelCall'],
+  ): ModelCallSummary {
+    if (call) {
+      return {
+        modelProvider: call.providerId,
+        modelName: call.model,
+        inputTokens: call.inputTokens,
+        outputTokens: call.outputTokens,
+        creditCost: call.creditCost,
+        durationMs: call.durationMs,
       }
-    } catch (err) {
-      this.logger.warn(`读取模型调用统计失败：${(err as Error).message}`)
     }
+    // 兜底：插件未附带 modelCall（如旧版本插件）时返回零值统计
     return {
       modelProvider: selection.providerId,
       modelName: selection.model,

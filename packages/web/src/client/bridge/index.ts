@@ -39,10 +39,18 @@ export function initBridge(): Bridge {
       }
       return new Promise<T>((resolve, reject) => {
         const callId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        // 远程调用 30s 超时（与前端 HTTP 链路一致，评审 M8/L7）；超时后迟到的回调直接忽略
+        const timeoutSignal = AbortSignal.timeout(30_000)
+        timeoutSignal.addEventListener(
+          'abort',
+          () => reject(new Error('远程调用超时（30 秒），请稍后重试')),
+          { once: true },
+        )
         socket.emit(
           BRIDGE_EVENTS.SERVICE_CALL,
           { callId, serviceId, method, args },
           (result: { callId: string; ok: boolean; data?: T; error?: string }) => {
+            if (timeoutSignal.aborted) return
             if (result?.ok) resolve(result.data as T)
             else reject(new Error(result?.error ?? '远程调用失败'))
           },

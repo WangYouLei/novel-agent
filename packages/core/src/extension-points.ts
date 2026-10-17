@@ -119,11 +119,31 @@ export interface FeatureError {
   message: string
 }
 
+/**
+ * 模型调用摘要（结构上与 @novelagent/model-service 的 ModelCallResult 兼容）
+ *
+ * core 处于依赖底层，不能反向依赖 model-service，故独立定义同构类型；
+ * 功能插件在 execute 内调用模型服务后，把返回结果附到 FeatureResult.modelCall，
+ * 供 Web 层同步消费调用统计（积分/耗时/Token），无需等待异步统计落库。
+ */
+export interface ModelCallSummary {
+  content: string
+  inputTokens: number
+  outputTokens: number
+  model: string
+  providerId: string
+  /** 本次消耗积分（自定义模型恒为 0） */
+  creditCost: number
+  durationMs: number
+}
+
 /** 功能插件标准输出 */
 export interface FeatureResult {
   success: boolean
   data?: unknown
   error?: FeatureError
+  /** 本次执行中的模型调用摘要（插件直连模型服务时附带，供调用方同步读取统计） */
+  modelCall?: ModelCallSummary
 }
 
 /** 功能扩展点：创作功能模块（大纲生成/章节写作/润色/续写等） */

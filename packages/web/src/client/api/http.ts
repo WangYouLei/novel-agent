@@ -22,7 +22,17 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   }
   if (auth.token) headers.Authorization = `Bearer ${auth.token}`
 
-  const res = await fetch(path, { ...init, headers })
+  let res: Response
+  try {
+    // 前端 HTTP 统一 30s 超时（全链路超时治理，评审 M8/L7）
+    res = await fetch(path, { ...init, headers, signal: AbortSignal.timeout(30_000) })
+  } catch (err) {
+    // 超时抛出 name 为 TimeoutError 的 DOMException，转译为用户可读信息；其余网络错误原样抛出
+    if ((err as Error).name === 'TimeoutError' || (err as Error).name === 'AbortError') {
+      throw new Error('请求超时（30 秒），请检查网络后重试')
+    }
+    throw err
+  }
   const body = (await res.json().catch(() => ({ code: -1, message: '响应解析失败' }))) as ApiResponse<T>
 
   if (body.code === 401) {

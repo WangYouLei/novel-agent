@@ -103,7 +103,8 @@ export default class OutlineGenerator extends FeatureExtensionPoint {
       request.emitProgress?.('done', 100, '大纲生成完成')
 
       log(`大纲生成成功：${outline.chapters.length} 章`)
-      return { success: true, data: outline }
+      // 模型调用摘要随结果同步返回（Web 层直接消费统计，无需等待异步落库）
+      return { success: true, data: outline, modelCall: response }
     } catch (err) {
       if (err instanceof BizError) {
         // 业务错误（积分不足/模型缺失等）原样透传
