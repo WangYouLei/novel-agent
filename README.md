@@ -38,10 +38,10 @@ novel-agent/
     ├── core/                # 插件内核（Cordis 封装、扩展点、事件、服务声明）
     ├── shared/              # 共享类型与工具库
     ├── application/         # 业务服务层（小说、写作、大纲、风格包、计费、用户）
-    ├── model-service/       # 模型服务（内置模型接入、风格分析）
+    ├── model-service/       # 模型服务（内置模型接入、OpenAI/DeepSeek/Qwen/GLM 厂商预设、风格分析）
     ├── market-client/       # 插件市场客户端（本地仓库、安装器、HTTP 市场客户端）
     ├── web/                 # Web 端（Nest.js 服务端 + Vue 3 客户端）
-    └── plugins/             # 官方插件（openai-model、outline-generator、style-generator）
+    └── plugins/             # 官方插件（outline-generator、style-generator）
 ```
 
 ## 快速开始

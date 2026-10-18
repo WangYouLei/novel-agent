@@ -279,8 +279,6 @@ model InstalledPlugin {
   installedAt DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
-  modelConfigs ModelConfig[]
-
   @@unique([userId, pluginId])
   @@index([userId, status])
 }
@@ -298,21 +296,21 @@ enum PluginSource {
 }
 
 // 用户模型配置表：用户自定义厂商模型的 API Key / 端点 / 模型名（API Key 加密存储，见文档 7.3.6 注释）
+// providerId 指向系统厂商预设（openai/deepseek/qwen/glm，model-service 固定能力）或第三方模型插件 id
 model ModelConfig {
-  id                String          @id @default(cuid())
-  userId            String
-  user              User            @relation(fields: [userId], references: [id])
-  installedPluginId String
-  installedPlugin   InstalledPlugin @relation(fields: [installedPluginId], references: [id])
-  name              String
-  baseUrl           String?
-  apiKeyEncrypted   String
-  modelName         String
-  isDefault         Boolean         @default(false)
-  extraParams       Json?
-  deleted           Boolean         @default(false)
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  providerId      String
+  name            String
+  baseUrl         String?
+  apiKeyEncrypted String
+  modelName       String
+  isDefault       Boolean  @default(false)
+  extraParams     Json?
+  deleted         Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([userId])
   @@index([userId, isDefault])

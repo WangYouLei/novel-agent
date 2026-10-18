@@ -38,10 +38,10 @@ novel-agent/
     ├── core/                # Plugin kernel (Cordis wrapper, extension points, events, services)
     ├── shared/              # Shared types and utilities
     ├── application/         # Application services (novels, writing, outlines, style packs, billing, users)
-    ├── model-service/       # Model service (built-in model access, style analysis)
+    ├── model-service/       # Model service (built-in model access, OpenAI/DeepSeek/Qwen/GLM providers, style analysis)
     ├── market-client/       # Plugin marketplace client (local repo, installer, HTTP marketplace client)
     ├── web/                 # Web app (Nest.js server + Vue 3 client)
-    └── plugins/             # Official plugins (openai-model, outline-generator, style-generator)
+    └── plugins/             # Official plugins (outline-generator, style-generator)
 ```
 
 ## Getting Started

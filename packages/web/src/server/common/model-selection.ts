@@ -1,3 +1,4 @@
+import { getSystemProvider } from '@novelagent/shared'
 import type { ModelConfigService, PluginRegistryService } from '@novelagent/application'
 import type { ModelSelection } from '@novelagent/core'
 import { BizError, ErrorCode } from '@novelagent/shared'
@@ -13,8 +14,9 @@ export interface ModelSelectionDeps {
 /**
  * 统一模型选择解析（chat / writing / style-packs 三处控制器复用，评审 L17）：
  * - providerId 显式为 'builtin' → 内置免费模型（mock）
- * - modelConfigId 存在 → 用户自定义配置（解密注入连接参数，并校验模型插件可用；
- *   实际 providerId 以配置对应的插件为准，前端无需硬编码插件 id）
+ * - modelConfigId 存在 → 用户自定义配置（解密注入连接参数）：
+ *   - 系统厂商预设（openai/deepseek/qwen/glm）：固定能力直接可用，无需插件校验
+ *   - 第三方模型插件：校验插件已安装/启用/运行后按插件路由
  * - 其余缺省情形（providerId 未传且无 modelConfigId）→ 统一走内置（语义对齐 chat 端）
  * - 显式传入非 builtin 的 providerId 但缺 modelConfigId → 400
  *
@@ -38,34 +40,48 @@ export async function resolveModelSelection(
   if (modelConfigId) {
     const config = await deps.modelConfigService.getDecrypted(userId, modelConfigId)
 
-    // 校验对应模型插件可用（验收标准 5：禁用模型插件 → 明确提示缺少模型提供者）
+    // 2a. 系统厂商预设：固定能力，无插件参与，直接返回
+    if (getSystemProvider(config.providerId)) {
+      return {
+        providerId: config.providerId,
+        modelConfigId: config.id,
+        model: config.modelName,
+        // 连接参数解密注入（API Key 不落日志，ADR 见 model-config 服务）
+        providerConfig: {
+          apiKey: config.apiKey,
+          baseUrl: config.baseUrl ?? undefined,
+          model: config.modelName,
+        },
+      }
+    }
+
+    // 2b. 第三方模型插件：校验可用（验收标准 5：禁用模型插件 → 明确提示缺少模型提供者）
     // 区分"未安装"与"已禁用"两种状态，避免误报（评审 L13）：
     // - 未安装：getByPluginId 抛 PLUGIN_NOT_FOUND → 透出未安装语义的明确提示
     // - 已禁用：正常返回但 enabled=false → 保持现有"已禁用"提示
     const pluginRecord = await deps.pluginRegistry
-      .getByPluginId(userId, config.pluginId)
+      .getByPluginId(userId, config.providerId)
       .catch((err) => {
         if (err instanceof BizError && err.code === ErrorCode.PLUGIN_NOT_FOUND) {
-          throw new BizError(ErrorCode.PLUGIN_NOT_FOUND, `模型插件 [${config.pluginId}] 未安装，请先安装`)
+          throw new BizError(ErrorCode.PLUGIN_NOT_FOUND, `模型插件 [${config.providerId}] 未安装，请先安装`)
         }
         throw err
       })
     if (!pluginRecord.enabled) {
       throw new BizError(
         ErrorCode.MODEL_PROVIDER_MISSING,
-        `模型插件 [${config.pluginId}] 已禁用，缺少模型提供者，请先启用`,
+        `模型插件 [${config.providerId}] 已禁用，缺少模型提供者，请先启用`,
       )
     }
-    const runtime = deps.cordisHost.runtimes.get(config.pluginId)
+    const runtime = deps.cordisHost.runtimes.get(config.providerId)
     if (!runtime || runtime.status !== 'STARTED') {
-      throw new BizError(ErrorCode.MODEL_PROVIDER_MISSING, `模型插件 [${config.pluginId}] 未在运行`)
+      throw new BizError(ErrorCode.MODEL_PROVIDER_MISSING, `模型插件 [${config.providerId}] 未在运行`)
     }
 
     return {
-      providerId: config.pluginId,
+      providerId: config.providerId,
       modelConfigId: config.id,
       model: config.modelName,
-      // 连接参数解密注入（API Key 不落日志，ADR 见 model-config 服务）
       providerConfig: {
         apiKey: config.apiKey,
         baseUrl: config.baseUrl ?? undefined,

@@ -318,7 +318,7 @@ async function generate() {
     const pack = await post<StylePackDto>('/api/style-packs/generate', {
       name: gen.name.trim() || undefined,
       sourceText: gen.sourceText,
-      providerId: gen.modelMode === 'builtin' ? 'builtin' : 'openai-model',
+      providerId: gen.modelMode === 'builtin' ? 'builtin' : undefined,
       modelConfigId: gen.modelMode === 'builtin' ? undefined : gen.modelConfigId,
       pluginConfig: { ...gen.pluginConfig },
     })

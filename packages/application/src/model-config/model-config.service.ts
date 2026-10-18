@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import {
+  SYSTEM_MODEL_PROVIDERS,
   BizError,
   ErrorCode,
   maskApiKey,
@@ -13,6 +14,7 @@ import { encryptWithKey, decryptWithKey } from '../crypto'
 /**
  * 用户自定义模型配置（文档 7.3.6 ModelConfig）
  * API Key 以 AES-256-GCM 加密存储，仅在调用模型时解密，不回传前端
+ * providerId 指向系统厂商预设（shared 单源，model-service 固定能力）或第三方模型插件 id
  */
 export class ModelConfigService {
   constructor(
@@ -24,7 +26,6 @@ export class ModelConfigService {
     const configs = await this.prisma.modelConfig.findMany({
       where: { userId, deleted: false },
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
-      include: { installedPlugin: { select: { name: true } } },
     })
     return configs.map((c) => {
       let apiKeyMasked: string
@@ -36,8 +37,8 @@ export class ModelConfigService {
       }
       return {
         id: c.id,
-        installedPluginId: c.installedPluginId,
-        installedPluginName: c.installedPlugin.name,
+        providerId: c.providerId,
+        providerName: this.resolveProviderName(c.providerId),
         name: c.name,
         baseUrl: c.baseUrl,
         apiKeyMasked,
@@ -50,10 +51,9 @@ export class ModelConfigService {
 
   async create(userId: string, req: CreateModelConfigRequest): Promise<ModelConfigDto> {
     if (!req.apiKey?.trim()) throw new BizError(ErrorCode.BAD_REQUEST, 'API Key 不能为空')
-    const plugin = await this.prisma.installedPlugin.findFirst({
-      where: { id: req.installedPluginId, userId, type: 'MODEL' },
-    })
-    if (!plugin) throw new BizError(ErrorCode.PLUGIN_NOT_FOUND, '模型插件不存在')
+    if (!req.providerId?.trim()) {
+      throw new BizError(ErrorCode.BAD_REQUEST, '必须选择模型厂商')
+    }
 
     // 设为默认时取消其他默认
     if (req.isDefault) {
@@ -65,7 +65,7 @@ export class ModelConfigService {
     const created = await this.prisma.modelConfig.create({
       data: {
         userId,
-        installedPluginId: req.installedPluginId,
+        providerId: req.providerId.trim(),
         name: req.name,
         baseUrl: req.baseUrl,
         apiKeyEncrypted: this.encrypt(req.apiKey.trim()),
@@ -73,8 +73,7 @@ export class ModelConfigService {
         isDefault: req.isDefault ?? false,
       },
     })
-    // installedPluginName 与 list() 对齐：直接复用上面已查到的插件记录
-    return this.toDto(created, plugin.name)
+    return this.toDto(created)
   }
 
   async update(userId: string, id: string, req: UpdateModelConfigRequest): Promise<ModelConfigDto> {
@@ -96,10 +95,8 @@ export class ModelConfigService {
         isDefault: req.isDefault,
         apiKeyEncrypted: req.apiKey?.trim() ? this.encrypt(req.apiKey.trim()) : undefined,
       },
-      // installedPluginName 与 list() 对齐：update 同样带回插件名（评审 M12）
-      include: { installedPlugin: { select: { name: true } } },
     })
-    return this.toDto(updated, updated.installedPlugin.name)
+    return this.toDto(updated)
   }
 
   async remove(userId: string, id: string): Promise<void> {
@@ -111,23 +108,27 @@ export class ModelConfigService {
   /** 取解密后的完整配置（仅模型服务调用链使用，禁止输出到日志/前端） */
   async getDecrypted(userId: string, id: string): Promise<{
     id: string
-    pluginId: string
+    providerId: string
     baseUrl: string | null
     apiKey: string
     modelName: string
   }> {
     const c = await this.prisma.modelConfig.findFirst({
       where: { id, userId, deleted: false },
-      include: { installedPlugin: true },
     })
     if (!c) throw new BizError(ErrorCode.MODEL_CONFIG_INVALID, '模型配置不存在')
     return {
       id: c.id,
-      pluginId: c.installedPlugin.pluginId,
+      providerId: c.providerId,
       baseUrl: c.baseUrl,
       apiKey: this.decrypt(c.apiKeyEncrypted),
       modelName: c.modelName,
     }
+  }
+
+  /** 解析 providerId 显示名：系统厂商预设取预设名，第三方插件 id 原样展示 */
+  private resolveProviderName(providerId: string): string {
+    return SYSTEM_MODEL_PROVIDERS.find((p) => p.providerId === providerId)?.providerName ?? providerId
   }
 
   private encrypt(plain: string): string {
@@ -142,23 +143,20 @@ export class ModelConfigService {
     }
   }
 
-  private toDto(
-    c: {
-      id: string
-      installedPluginId: string
-      name: string
-      baseUrl: string | null
-      apiKeyEncrypted: string
-      modelName: string
-      isDefault: boolean
-      createdAt: Date
-    },
-    installedPluginName: string | null,
-  ): ModelConfigDto {
+  private toDto(c: {
+    id: string
+    providerId: string
+    name: string
+    baseUrl: string | null
+    apiKeyEncrypted: string
+    modelName: string
+    isDefault: boolean
+    createdAt: Date
+  }): ModelConfigDto {
     return {
       id: c.id,
-      installedPluginId: c.installedPluginId,
-      installedPluginName,
+      providerId: c.providerId,
+      providerName: this.resolveProviderName(c.providerId),
       name: c.name,
       baseUrl: c.baseUrl,
       apiKeyMasked: maskApiKey(this.decrypt(c.apiKeyEncrypted)),

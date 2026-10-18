@@ -1,8 +1,10 @@
 import { Service, SERVICE_IDS, type Context, type ModelRequest } from '@novelagent/core'
 import type { ModelProvider, ModelResponse } from '@novelagent/core'
+import { SYSTEM_MODEL_PROVIDERS, getSystemProvider, type SystemModelProviderDto } from '@novelagent/shared'
 import { BizError, ErrorCode } from '@novelagent/shared'
 import type { BillingHook } from './billing-hook'
 import { BuiltinMockProvider } from './builtin/builtin-provider'
+import { chatWithOpenAICompat } from './builtin/openai-compat'
 
 /** chat 的完整结果（含计费与耗时，供调用记录链路使用） */
 export interface ModelCallResult extends ModelResponse {
@@ -14,6 +16,7 @@ export interface ModelCallResult extends ModelResponse {
 /**
  * ModelService：统一模型调用入口（文档 5.1 混合模式）
  * - 内置免费模型：绑定计费 hook（先扣费，失败退费）
+ * - 系统厂商预设（OpenAI/DeepSeek/Qwen/GLM）：OpenAI 兼容客户端直连，用户自己的 Key 不计费
  * - 插件 provider：按服务名 model-provider:<pluginId> 路由，用户自己的 Key 不计费
  * - 每次调用发布 model-call-finished 事件（Web 层订阅写库，ADR-011）
  */
@@ -39,10 +42,14 @@ export class ModelService extends Service {
   async chat(request: ModelRequest): Promise<ModelCallResult> {
     const started = Date.now()
     try {
-      const result =
-        request.providerId === this.builtin.providerId
-          ? await this.callBuiltin(request, started)
-          : await this.callPluginProvider(request, started)
+      let result: ModelCallResult
+      if (request.providerId === this.builtin.providerId) {
+        result = await this.callBuiltin(request, started)
+      } else if (getSystemProvider(request.providerId)) {
+        result = await this.callSystemProvider(request, started)
+      } else {
+        result = await this.callPluginProvider(request, started)
+      }
       this.emitCallFinished(request, result, 'SUCCESS')
       return result
     } catch (err) {
@@ -51,15 +58,29 @@ export class ModelService extends Service {
     }
   }
 
-  /** 列出内置提供者（插件 provider 由插件注册表发现，见 PluginController） */
-  listBuiltinProviders(): Array<{ providerId: string; providerName: string; isBuiltin: boolean }> {
+  /** 列出内置免费模型与系统厂商预设（第三方插件 provider 由插件注册表发现，见 PluginController） */
+  listBuiltinProviders(): Array<{
+    providerId: string
+    providerName: string
+    isBuiltin: boolean
+  }> {
     return [
       {
         providerId: this.builtin.providerId,
         providerName: this.builtin.providerName,
         isBuiltin: true,
       },
+      ...SYSTEM_MODEL_PROVIDERS.map((p) => ({
+        providerId: p.providerId,
+        providerName: p.providerName,
+        isBuiltin: true,
+      })),
     ]
+  }
+
+  /** 系统厂商预设列表（供模型配置接口下发前端） */
+  listSystemProviders(): SystemModelProviderDto[] {
+    return SYSTEM_MODEL_PROVIDERS
   }
 
   private emitCallFinished(
@@ -100,6 +121,15 @@ export class ModelService extends Service {
       await this.billingHook.refund(request, cost, (err as Error).message)
       throw err
     }
+  }
+
+  private async callSystemProvider(
+    request: ModelRequest,
+    started: number,
+  ): Promise<ModelCallResult> {
+    const provider = getSystemProvider(request.providerId)!
+    const response = await chatWithOpenAICompat(request, provider.providerId, provider.defaultBaseUrl)
+    return { ...response, creditCost: 0, durationMs: Date.now() - started }
   }
 
   private async callPluginProvider(request: ModelRequest, started: number): Promise<ModelCallResult> {

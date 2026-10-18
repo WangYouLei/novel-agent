@@ -13,11 +13,10 @@ import { encryptWithKey } from '../crypto'
 const key = Buffer.alloc(32, 7)
 
 /** 构造 findMany 返回形状的记录 */
-function makeRecord(id: string, apiKeyEncrypted: string) {
+function makeRecord(id: string, apiKeyEncrypted: string, providerId = 'openai') {
   return {
     id,
-    installedPluginId: 'plug-1',
-    installedPlugin: { name: 'OpenAI 兼容' },
+    providerId,
     name: `配置 ${id}`,
     baseUrl: 'https://api.example.com/v1',
     apiKeyEncrypted,
@@ -34,12 +33,14 @@ function makeService(records: unknown[]): ModelConfigService {
 }
 
 describe('ModelConfigService.list 解密容错', () => {
-  it('全部可解密时正常返回掩码', async () => {
+  it('全部可解密时正常返回掩码，厂商名取系统预设', async () => {
     const service = makeService([makeRecord('g1', encryptWithKey(key, 'sk-good-key-123456'))])
     const list = await service.list('u1')
     expect(list).toHaveLength(1)
     expect(list[0].apiKeyMasked).toBe('sk-****3456')
     expect(list[0].name).toBe('配置 g1')
+    expect(list[0].providerId).toBe('openai')
+    expect(list[0].providerName).toBe('OpenAI')
   })
 
   it('单条解密失败不拖垮整页：坏记录掩码为固定文案，其余字段正常返回', async () => {
@@ -62,5 +63,11 @@ describe('ModelConfigService.list 解密容错', () => {
     const list = await service.list('u1')
     expect(list).toHaveLength(1)
     expect(list[0].apiKeyMasked).toBe('****（解密失败）')
+  })
+
+  it('第三方插件 providerId 的显示名回退为 id 原样', async () => {
+    const service = makeService([makeRecord('g2', encryptWithKey(key, 'sk-good-key-123456'), 'custom-llm')])
+    const list = await service.list('u1')
+    expect(list[0].providerName).toBe('custom-llm')
   })
 })

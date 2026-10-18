@@ -67,6 +67,14 @@ async function main(): Promise<void> {
   const syncResult = syncBuiltinPlugins(builtinDirs, path.join(config.dataRoot, 'plugins'), log)
   log(`内置插件同步完成：更新 ${syncResult.synced.length}，未变 ${syncResult.unchanged.length}`)
 
+  // openai-model 插件已内化为系统固定模型接入能力（model-service 厂商预设）：
+  // 清理旧插件运行目录，避免 Cordis 宿主继续加载（幂等，目录不存在时跳过）
+  const legacyPluginDir = path.join(config.dataRoot, 'plugins', 'openai-model')
+  if (fs.existsSync(legacyPluginDir)) {
+    fs.rmSync(legacyPluginDir, { recursive: true })
+    log('已移除遗留插件目录 openai-model（模型接入已转为系统固定功能）')
+  }
+
   // 插件运行时共享依赖链接（与宿主同一 cordis/core 实例，文档 6.2 node_modules 说明）
   // 注意：require.resolve 返回入口文件，需 resolvePackageDir 定位包根目录
   ensureSharedDependencies(
@@ -84,6 +92,10 @@ async function main(): Promise<void> {
   const stylePackService = new StylePackService(db)
   const seeded = await stylePackService.seedBuiltinPacks()
   log(`内置风格包就绪：${seeded} 个`)
+
+  // 清理 openai-model 遗留安装记录（目录已删，插件管理列表不再显示；幂等）
+  const removedLegacy = await db.installedPlugin.deleteMany({ where: { pluginId: 'openai-model' } })
+  if (removedLegacy.count > 0) log(`已清理 openai-model 遗留安装记录 ${removedLegacy.count} 条`)
 
   // 5. 启动 Web 服务（含 Cordis 插件内核加载）
   const app = await bootstrap()

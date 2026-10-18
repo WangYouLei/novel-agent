@@ -232,7 +232,7 @@ async function generate() {
     result.value = await post<GenerateOutlineResponse>('/api/writing/outline/generate', {
       novelId: form.novelId,
       idea: form.idea.trim(),
-      providerId: modelMode.value === 'builtin' ? 'builtin' : 'openai-model',
+      providerId: modelMode.value === 'builtin' ? 'builtin' : undefined,
       modelConfigId: modelMode.value === 'builtin' ? undefined : form.modelConfigId,
       pluginConfig: { ...pluginConfig },
     })
