@@ -25,7 +25,7 @@ export interface DispatchContext {
   history: Array<{ role: 'USER' | 'ASSISTANT'; content: string }>
   /** 可用插件 */
   plugins: DispatchPluginInfo[]
-  /** 调度所用模型：builtin 走本地规则（零积分成本）；自定义走 LLM */
+  /** 所选模型：builtin 为内置演示模型；自定义模型走真实 LLM 对话 */
   model: ModelSelection
 }
 
@@ -33,19 +33,22 @@ export type DispatchDecision =
   | { action: 'execute'; pluginId: string; input: Record<string, unknown> }
   | { action: 'reply'; message: string }
 
-/** 内置模型下的关键词路由表（mock 模型不具备真实意图识别能力，用规则替代） */
-const KEYWORD_ROUTES: Array<{ pluginId: string; pattern: RegExp }> = [
-  { pluginId: 'style-generator', pattern: /风格|文风|笔触|语感|提取.*小说/i },
-  { pluginId: 'outline-generator', pattern: /大纲|目录|章节规划|outline/i },
-]
+/** 附件送入对话上下文的最大长度（执行插件时才用全文） */
+const CONTEXT_ATTACHMENT_CHARS = 4000
 
-/** 附件送入 LLM 调度上下文的最大长度（执行时才用全文） */
-const DISPATCH_ATTACHMENT_CHARS = 4000
+/** 常规对话历史条数上限 */
+const CONTEXT_HISTORY_MESSAGES = 12
+
+/** 内置演示模型为纯 mock（仅支持大纲/风格任务标记），无法进行常规对话，返回引导说明 */
+const BUILTIN_CHAT_REPLY = [
+  '当前使用内置演示模型，仅支持通过插件生成大纲、提取风格，暂不支持常规对话。',
+  '你可以：点击输入框下方「插件」按钮选择一个创作插件；或在「模型设置」配置自定义模型后，切换为「自定义」再与我对话。',
+].join('\n')
 
 /**
- * 对话调度器：把用户自然语言 + 附件决策为「调用某插件」或「直接回复」
- * - 自定义模型：LLM 意图识别（用户自己的 Key，不计积分）
- * - 内置模型：本地关键词规则（避免为调度本身消耗积分）
+ * 对话调度器（插件由用户显式选择，不再做自动意图路由）：
+ * - dispatchForPlugin：用户选择了插件 → 按 inputSchema 组装输入直接执行；缺必要输入转为追问回复
+ * - chat：未选择插件 → 按常规对话处理（自定义模型走真实 LLM；内置演示模型返回引导说明）
  */
 @Injectable()
 export class ChatDispatcherService {
@@ -53,100 +56,61 @@ export class ChatDispatcherService {
 
   constructor(private readonly cordisHost: CordisHost) {}
 
-  async dispatch(ctx: DispatchContext): Promise<DispatchDecision> {
+  /** 用户显式选择插件：组装输入直接执行；插件不可用或缺必要输入时转为回复 */
+  dispatchForPlugin(ctx: DispatchContext, pluginId: string): DispatchDecision {
+    const target = ctx.plugins.find((p) => p.pluginId === pluginId)
+    if (!target) {
+      return {
+        action: 'reply',
+        message: `插件「${pluginId}」当前不可用（未启用或未运行），请到「插件管理」检查后重试。`,
+      }
+    }
+    return (
+      this.buildInput(target, ctx) ?? {
+        action: 'reply',
+        message: `请补充「${target.displayName}」需要的信息后重试。`,
+      }
+    )
+  }
+
+  /** 常规对话：自定义模型走真实 LLM；内置演示模型返回引导说明 */
+  async chat(ctx: DispatchContext): Promise<DispatchDecision> {
     if (ctx.model.providerId === 'builtin') {
-      return this.dispatchByRule(ctx)
+      return { action: 'reply', message: BUILTIN_CHAT_REPLY }
     }
     try {
-      return await this.dispatchByLLM(ctx)
+      const modelService = this.cordisHost.get<ModelService>(SERVICE_IDS.MODEL)
+      if (!modelService) throw new Error('model-service 不可用')
+
+      const attachmentBrief = ctx.attachmentText
+        ? `\n\n【附件：${ctx.attachmentName}（${ctx.attachmentText.length} 字）】\n${ctx.attachmentText.slice(0, CONTEXT_ATTACHMENT_CHARS)}`
+        : ''
+      // history 已含刚入库的当前用户消息，直接作为对话正文
+      const historyText = ctx.history
+        .slice(-CONTEXT_HISTORY_MESSAGES)
+        .map((m) => `${m.role === 'USER' ? '用户' : '助手'}：${m.content}`)
+        .join('\n\n')
+
+      const systemPrompt = [
+        '你是 NovelAgent 的 AI 创作助手，正在与小说作者进行常规对话：帮助构思剧情、解答创作疑问、头脑风暴、润色文字。',
+        '直接用中文自然回复，不要输出 JSON 或任何调用协议。',
+        ctx.novelTitle ? `当前小说：《${ctx.novelTitle}》。` : '',
+      ].join('')
+
+      const result = await modelService.chat({
+        prompt: `${historyText}${attachmentBrief}`,
+        systemPrompt,
+        model: ctx.model.model,
+        providerId: ctx.model.providerId,
+        providerOptions: ctx.model.providerConfig,
+        metadata: { userId: ctx.userId },
+      })
+      const content = result.content.trim()
+      return { action: 'reply', message: content || '（模型未返回内容，请重试）' }
     } catch (err) {
-      this.logger.warn(`LLM 调度失败，回退规则路由：${(err as Error).message}`)
-      return this.dispatchByRule(ctx)
+      this.logger.warn(`对话模型调用失败：${(err as Error).message}`)
+      return { action: 'reply', message: `模型调用失败：${(err as Error).message}，请检查模型配置后重试。` }
     }
-  }
-
-  /** 本地规则路由（内置模型/LLM 失败兜底） */
-  private dispatchByRule(ctx: DispatchContext): DispatchDecision {
-    const text = ctx.message
-    // 1. 显式点名插件 id / 名称优先
-    let target = ctx.plugins.find(
-      (p) => text.includes(p.pluginId) || text.includes(p.displayName),
-    )
-    // 2. 关键词表
-    if (!target) {
-      for (const route of KEYWORD_ROUTES) {
-        if (route.pattern.test(text)) {
-          target = ctx.plugins.find((p) => p.pluginId === route.pluginId)
-          if (target) break
-        }
-      }
-    }
-    if (!target) return { action: 'reply', message: this.capabilitiesReply(ctx.plugins) }
-
-    return this.buildInput(target, ctx) ?? { action: 'reply', message: this.capabilitiesReply(ctx.plugins) }
-  }
-
-  /** LLM 路由：组装插件清单与输出协议，解析 JSON 决策 */
-  private async dispatchByLLM(ctx: DispatchContext): Promise<DispatchDecision> {
-    const modelService = this.cordisHost.get<ModelService>(SERVICE_IDS.MODEL)
-    if (!modelService) throw new Error('model-service 不可用')
-
-    const attachmentBrief = ctx.attachmentText
-      ? `\n\n【附件：${ctx.attachmentName}（${ctx.attachmentText.length} 字）】\n${ctx.attachmentText.slice(0, DISPATCH_ATTACHMENT_CHARS)}`
-      : ''
-
-    const history = ctx.history
-      .slice(-8)
-      .map((m) => `${m.role === 'USER' ? '用户' : '助手'}：${m.content.slice(0, 500)}`)
-      .join('\n')
-
-    const systemPrompt = [
-      '你是 NovelAgent 的对话调度助手。用户用自然语言下达创作指令，你决定调用哪个插件或直接回复。',
-      '',
-      '## 可用插件',
-      JSON.stringify(
-        ctx.plugins.map((p) => ({
-          pluginId: p.pluginId,
-          名称: p.displayName,
-          说明: p.description,
-          输入: p.inputSchema,
-        })),
-      ),
-      ctx.novelTitle ? `\n## 用户上下文\n当前小说：《${ctx.novelTitle}》` : '',
-      '',
-      '## 输出协议',
-      '只输出一个 JSON 对象，不要任何其他文字或代码围栏：',
-      '- 调用插件：{"action":"execute","pluginId":"插件id","input":{"字段key":"值"}}',
-      '  input 的 key 必须严格按插件「输入」schema 填写；file 类型字段填附件文本原文',
-      '- 直接回复（闲聊/咨询/缺少必要信息需追问）：{"action":"reply","message":"回复内容"}',
-    ].join('\n')
-
-    const result = await modelService.chat({
-      prompt: `${history ? `## 对话历史\n${history}\n\n` : ''}## 用户最新消息\n${ctx.message}${attachmentBrief}`,
-      systemPrompt,
-      model: ctx.model.model,
-      providerId: ctx.model.providerId,
-      providerOptions: ctx.model.providerConfig,
-      metadata: { userId: ctx.userId },
-    })
-
-    return this.parseDecision(result.content, ctx)
-  }
-
-  /** 解析 LLM 输出为决策（非法 pluginId / 缺字段回退规则路由） */
-  private parseDecision(raw: string, ctx: DispatchContext): DispatchDecision {
-    const json = extractJson(raw)
-    if (!json) throw new Error('LLM 输出无法解析为 JSON')
-    if (json.action === 'reply' && typeof json.message === 'string' && json.message.trim()) {
-      return { action: 'reply', message: json.message.trim() }
-    }
-    if (json.action === 'execute' && typeof json.pluginId === 'string') {
-      const target = ctx.plugins.find((p) => p.pluginId === json.pluginId)
-      if (target && json.input && typeof json.input === 'object') {
-        return { action: 'execute', pluginId: target.pluginId, input: json.input as Record<string, unknown> }
-      }
-    }
-    throw new Error(`LLM 决策不可执行：${raw.slice(0, 200)}`)
   }
 
   /** 按 inputSchema 组装插件输入；缺必要输入返回 undefined（追问） */
@@ -173,30 +137,5 @@ export class ChatDispatcherService {
     }
     if (Object.keys(input).length === 0) input.message = ctx.message
     return { action: 'execute', pluginId: plugin.pluginId, input }
-  }
-
-  /** 能力清单回复（未命中任何插件时） */
-  private capabilitiesReply(plugins: DispatchPluginInfo[]): string {
-    if (plugins.length === 0) {
-      return '当前没有可用的创作插件，请先到「插件管理」启用插件后再来对话。'
-    }
-    const lines = plugins.map(
-      (p) => `- ${p.displayName}：${p.description ?? '无描述'}（输入：${p.inputSchema.map((f) => f.name).join('、') || '无'}）`,
-    )
-    return `我可以帮你调用以下创作能力，直接用一句话描述需求即可：\n${lines.join('\n')}`
-  }
-}
-
-/** 从 LLM 输出中提取 JSON 对象（容忍围栏与前后缀文本） */
-function extractJson(raw: string): Record<string, unknown> | undefined {
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/)
-  const candidate = fenced ? fenced[1] : raw
-  const start = candidate.indexOf('{')
-  const end = candidate.lastIndexOf('}')
-  if (start === -1 || end <= start) return undefined
-  try {
-    return JSON.parse(candidate.slice(start, end + 1)) as Record<string, unknown>
-  } catch {
-    return undefined
   }
 }

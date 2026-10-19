@@ -104,14 +104,14 @@ import { inject, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { get, post, put } from '@/api/http'
 import type { PluginConfigField, PluginDto } from '@novelagent/shared'
-import type { Context } from 'cordis'
+import type { Bridge } from '@/bridge'
 import type { PluginStatusChangedEvent } from '@novelagent/shared'
 
 const plugins = ref<PluginDto[]>([])
 const toggling = ref('')
 const uninstalling = ref('')
 const savingConfig = ref(false)
-const bridgeCtx = inject<Context>('bridge')
+const bridge = inject<Bridge>('bridge')
 
 const configDialog = reactive({
   visible: false,
@@ -126,8 +126,8 @@ let offEvent: (() => void) | undefined
 onMounted(async () => {
   await load()
   // Bridge 事件：插件状态变化实时刷新（验收标准 2）
-  if (bridgeCtx) {
-    offEvent = bridgeCtx.on('plugin-status-changed', (_data: PluginStatusChangedEvent) => {
+  if (bridge) {
+    offEvent = bridge.ctx.on('plugin-status-changed', (_data: PluginStatusChangedEvent) => {
       load().catch(() => undefined)
     })
   }

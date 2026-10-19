@@ -11,6 +11,10 @@ import {
 import { ensureSharedDependencies, resolvePackageDir, syncBuiltinPlugins } from '@novelagent/market-client'
 import { bootstrap } from '@novelagent/web'
 
+// 禁用 Prisma checkpoint 遥测：其缓存写入用户目录（~/AppData/Local/checkpoint-nodejs），
+// 会被沙箱拦截并杀掉进程；需在任何 PrismaClient 实例化之前设置
+process.env.CHECKPOINT_DISABLE = '1'
+
 /**
  * NovelAgent 启动器（文档 3.2 apps/launcher）
  * 启动顺序：

@@ -41,7 +41,7 @@ interface ExecOutcome {
 
 /**
  * 对话式插件入口（方案 B）：
- * 用户在对话框输入指令/附件 → 调度器决策 → 通用执行任意 FEATURE / STYLE_GENERATOR 插件
+ * 用户在对话框选择插件则直接执行（FEATURE / STYLE_GENERATOR），未选择则进行常规对话
  * 第三方插件只需在 manifest 声明 inputSchema，无需编写任何前端代码即可被对话调用
  */
 @Controller('api/chat')
@@ -92,7 +92,7 @@ export class ChatController {
     return messages.map((m) => this.toMessageDto(m))
   }
 
-  /** 发送消息：存用户消息 → 调度决策 → 执行插件/回复 → 存助手消息 */
+  /** 发送消息：存用户消息 → 选择了插件则执行插件、否则常规对话 → 存助手消息 */
   @Post('sessions/:id/messages')
   async send(
     @CurrentUser() userId: string,
@@ -136,16 +136,32 @@ export class ChatController {
     let toolCall: ChatToolCall | undefined
     let replyText: string
     try {
-      const decision = await this.dispatcher.dispatch({
-        userId,
-        message: content,
-        attachmentText,
-        attachmentName: body.attachment?.name,
-        novelTitle: session.novel?.title,
-        history: history.map((m) => ({ role: m.role as 'USER' | 'ASSISTANT', content: m.content })),
-        plugins,
-        model,
-      })
+      const decision = body.pluginId
+        ? // 用户显式选择了插件：直接组装输入执行该插件
+          this.dispatcher.dispatchForPlugin(
+            {
+              userId,
+              message: content,
+              attachmentText,
+              attachmentName: body.attachment?.name,
+              novelTitle: session.novel?.title,
+              history: history.map((m) => ({ role: m.role as 'USER' | 'ASSISTANT', content: m.content })),
+              plugins,
+              model,
+            },
+            body.pluginId,
+          )
+        : // 未选择插件：按常规对话处理（自定义模型走 LLM，内置演示模型返回引导）
+          await this.dispatcher.chat({
+            userId,
+            message: content,
+            attachmentText,
+            attachmentName: body.attachment?.name,
+            novelTitle: session.novel?.title,
+            history: history.map((m) => ({ role: m.role as 'USER' | 'ASSISTANT', content: m.content })),
+            plugins,
+            model,
+          })
 
       if (decision.action === 'reply') {
         replyText = decision.message

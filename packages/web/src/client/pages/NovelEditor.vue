@@ -147,7 +147,7 @@
             <div ref="messageListEl" class="chat-messages">
               <el-empty
                 v-if="!messages.length"
-                description="用一句话描述你的创作需求，或上传小说文本提取风格"
+                description="可直接与我常规对话；选择插件后按插件能力处理"
                 :image-size="70"
               />
               <div v-for="message in messages" :key="message.id" class="msg-row" :class="message.role.toLowerCase()">
@@ -204,22 +204,50 @@
             </div>
 
             <div class="composer">
-              <div v-if="attachment" class="composer-att">
-                📎 {{ attachment.name }}（{{ attachment.text.length }} 字）
-                <el-button link size="small" @click="attachment = null">移除</el-button>
+              <div v-if="attachment || selectedPlugin" class="composer-att">
+                <template v-if="attachment">
+                  📎 {{ attachment.name }}（{{ attachment.text.length }} 字）
+                  <el-button link size="small" @click="attachment = null">移除</el-button>
+                </template>
+                <template v-if="selectedPlugin">
+                  <span class="plugin-chip">🔌 {{ selectedPlugin.displayName }}</span>
+                  <el-button link size="small" @click="selectedPluginId = ''">移除</el-button>
+                </template>
               </div>
               <el-input
                 v-model="input"
                 type="textarea"
                 :rows="3"
                 maxlength="4000"
-                placeholder="例如：帮我生成一个废柴逆袭的大纲；或上传 .txt 小说提取风格"
+                :placeholder="selectedPlugin
+                  ? `将调用「${selectedPlugin.displayName}」处理你的输入`
+                  : '直接输入即可常规对话；选择插件后按插件能力处理'"
                 :disabled="sending"
                 @keydown.ctrl.enter.prevent="send"
               />
               <div class="composer-bar">
                 <input ref="fileInputEl" type="file" accept=".txt,.md" hidden @change="onFileChange" />
                 <el-button size="small" @click="fileInputEl?.click()" :disabled="sending">📎 附件</el-button>
+                <!-- 插件选择（与附件同形的按钮）：不选=常规对话，选择=调用该插件 -->
+                <el-dropdown trigger="click" :disabled="sending" @command="onPluginCommand">
+                  <el-button size="small" :type="selectedPlugin ? 'primary' : 'default'" :disabled="sending">
+                    🔌 插件{{ selectedPlugin ? `：${selectedPlugin.displayName}` : '' }}
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="">不使用插件（常规对话）</el-dropdown-item>
+                      <el-dropdown-item
+                        v-for="p in chatPlugins"
+                        :key="p.pluginId"
+                        :command="p.pluginId"
+                        :disabled="p.pluginId === selectedPluginId"
+                      >
+                        {{ p.displayName }}
+                        <span class="plugin-desc">{{ p.description ?? '' }}</span>
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
                 <el-radio-group v-model="modelMode" size="small" :disabled="sending">
                   <el-radio-button value="builtin">内置模型</el-radio-button>
                   <el-radio-button value="custom" :disabled="!modelConfigs.length">自定义</el-radio-button>
@@ -262,8 +290,8 @@ import { computed, inject, nextTick, onMounted, onUnmounted, reactive, ref } fro
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
-import type { Context } from 'cordis'
 import { del, get, post, put } from '@/api/http'
+import type { Bridge } from '@/bridge'
 import { useAuthStore } from '@/stores/auth'
 import {
   LIMITS,
@@ -275,13 +303,14 @@ import {
   type ModelConfigDto,
   type NovelDto,
   type OutlineStructure,
+  type PluginDto,
   type SendChatMessageResponse,
   type StylePackDto,
 } from '@novelagent/shared'
 
 const route = useRoute()
 const auth = useAuthStore()
-const bridgeCtx = inject<Context>('bridge')
+const bridge = inject<Bridge>('bridge')
 
 const novelId = route.params.id as string
 const genres = ['玄幻', '都市', '科幻', '武侠', '悬疑', '言情', '其他']
@@ -330,6 +359,10 @@ const modelConfigId = ref('')
 const creatingSession = ref(false)
 const savingOutline = ref<Record<string, boolean>>({})
 
+// ===== 插件选择（不选=常规对话，选择=调用该插件） =====
+const plugins = ref<PluginDto[]>([])
+const selectedPluginId = ref('')
+
 const messageListEl = ref<HTMLElement>()
 const fileInputEl = ref<HTMLInputElement>()
 
@@ -343,6 +376,16 @@ const canSend = computed(
     (modelMode.value === 'builtin' || !!modelConfigId.value),
 )
 
+/** 对话可调用的插件（功能/风格生成类，已启用且运行中） */
+const chatPlugins = computed(() =>
+  plugins.value.filter((p) => p.type !== 'MODEL' && p.enabled && p.runtimeStatus === 'STARTED'),
+)
+const selectedPlugin = computed(() => chatPlugins.value.find((p) => p.pluginId === selectedPluginId.value))
+
+function onPluginCommand(pluginId: string) {
+  selectedPluginId.value = pluginId ?? ''
+}
+
 let offProgress: (() => void) | undefined
 
 /** Ctrl+S 快捷保存章节（仅章节编辑页签且有正在编辑的章节时触发） */
@@ -355,8 +398,8 @@ function onGlobalKeydown(e: KeyboardEvent) {
 
 onMounted(async () => {
   document.addEventListener('keydown', onGlobalKeydown)
-  if (bridgeCtx) {
-    offProgress = bridgeCtx.on('generation-progress', (payload: GenerationProgressPayload) => {
+  if (bridge) {
+    offProgress = bridge.ctx.on('generation-progress', (payload: GenerationProgressPayload) => {
       // 仅接受本页发起的生成进度（sending 期间 + 本小说），双开标签页/多任务时丢弃其他来源，避免进度串扰。
       // 注：payload.sessionId 是后端生成任务（writingSession）id，聊天接口不返回该 id，故以 novelId 过滤。
       if (!sending.value || payload.novelId !== novelId) return
@@ -365,12 +408,13 @@ onMounted(async () => {
     })
   }
   try {
-    const [novelRes, packsRes, chaptersRes, sessionsRes, modelsRes] = await Promise.allSettled([
+    const [novelRes, packsRes, chaptersRes, sessionsRes, modelsRes, pluginsRes] = await Promise.allSettled([
       get<NovelDto>(`/api/novels/${novelId}`),
       get<StylePackDto[]>('/api/style-packs'),
       get<ChapterDto[]>(`/api/novels/${novelId}/chapters`),
       get<ChatSessionDto[]>(`/api/chat/sessions?novelId=${novelId}`),
       get<ModelConfigDto[]>('/api/models/configs'),
+      get<PluginDto[]>('/api/plugins'),
     ])
     if (novelRes.status === 'rejected') throw novelRes.reason
     novel.value = novelRes.value
@@ -388,6 +432,7 @@ onMounted(async () => {
       if (sessions.value.length > 0) await onSelectSession(sessions.value[0].id)
     }
     if (modelsRes.status === 'fulfilled') modelConfigs.value = modelsRes.value
+    if (pluginsRes.status === 'fulfilled') plugins.value = pluginsRes.value
   } catch (err) {
     ElMessage.error((err as Error).message)
   }
@@ -573,6 +618,8 @@ async function send() {
     const result = await post<SendChatMessageResponse>(`/api/chat/sessions/${session.id}/messages`, {
       content,
       attachment: att ?? undefined,
+      // 未选择插件 → 常规对话；选择了插件 → 服务端直接调用该插件
+      pluginId: selectedPluginId.value || undefined,
       // 内置模式显式传 'builtin'；自定义模式只传 modelConfigId，
       // providerId 由后端按配置解析（不硬编码插件 id，评审 L17）
       providerId: modelMode.value === 'builtin' ? 'builtin' : undefined,
@@ -840,6 +887,27 @@ function statusType(status: string): string {
   font-size: 12px;
   color: var(--accent-deep);
   margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.plugin-chip {
+  background: var(--paper-bg);
+  border: 1px dashed var(--line-deep);
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+.plugin-desc {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--ink-secondary);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
 }
 .composer-bar {
   display: flex;

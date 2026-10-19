@@ -53,6 +53,8 @@ export interface SendChatMessageRequest {
   content: string
   /** 附件（前端读取 .txt/.md 文本内容直接上行，服务端按上限截断） */
   attachment?: { name: string; text: string }
+  /** 用户显式选择的插件 id：传入则直接调用该插件；不传则按常规对话处理 */
+  pluginId?: string
   /** 'builtin' = 内置模型（规则调度 + 执行计费）；其他 = 模型插件 id（LLM 调度） */
   providerId?: string
   /** providerId 非 builtin 时的模型配置 id */

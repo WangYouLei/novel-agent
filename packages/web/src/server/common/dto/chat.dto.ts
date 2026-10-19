@@ -15,6 +15,10 @@ export class SendChatMessageRequestDto implements SendChatMessageRequest {
 
   @IsOptional()
   @IsString()
+  pluginId?: string
+
+  @IsOptional()
+  @IsString()
   providerId?: string
 
   @IsOptional()
