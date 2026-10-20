@@ -92,27 +92,8 @@
           />
         </el-form-item>
 
-        <el-form-item label="使用模型">
-          <el-radio-group v-model="outline.modelMode" :disabled="outline.generating">
-            <el-radio value="builtin">内置免费模型（{{ OUTLINE_COST }} 积分/次）</el-radio>
-            <el-radio value="custom" :disabled="modelConfigs.length === 0">
-              自定义模型{{ modelConfigs.length === 0 ? '（未配置）' : '' }}
-            </el-radio>
-          </el-radio-group>
-          <el-select
-            v-if="outline.modelMode === 'custom'"
-            v-model="outline.modelConfigId"
-            style="width: 100%; margin-top: 8px"
-            placeholder="选择模型配置"
-            :disabled="outline.generating"
-          >
-            <el-option
-              v-for="m in modelConfigs"
-              :key="m.id"
-              :label="`${m.name}（${m.modelName}）`"
-              :value="m.id"
-            />
-          </el-select>
+        <el-form-item label="模型选择">
+          <ModelPicker v-model="outline.model" :disabled="outline.generating" />
         </el-form-item>
 
         <!-- 插件参数（schema 动态渲染，验收标准 3） -->
@@ -200,27 +181,25 @@ import { computed, inject, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { del, get, post } from '@/api/http'
+import ModelPicker, { type ModelSelectionValue } from '@/components/ModelPicker.vue'
 import type {
   GenerateOutlineResponse,
-  ModelConfigDto,
   NovelDto,
   OutlineDto,
   PluginConfigField,
   PluginDto,
   StylePackDto,
 } from '@novelagent/shared'
-import { CREDIT_POLICY, type GenerationProgressPayload } from '@novelagent/shared'
+import { type GenerationProgressPayload } from '@novelagent/shared'
 import type { Bridge } from '@/bridge'
 import { useAuthStore } from '@/stores/auth'
 
-const OUTLINE_COST = CREDIT_POLICY.OUTLINE_GENERATION_COST
 const router = useRouter()
 const auth = useAuthStore()
 const bridge = inject<Bridge>('bridge')
 
 const novels = ref<NovelDto[]>([])
 const stylePacks = ref<StylePackDto[]>([])
-const modelConfigs = ref<ModelConfigDto[]>([])
 const pluginSchema = ref<PluginConfigField[]>([])
 const pluginConfig = reactive<Record<string, unknown>>({})
 const loading = ref(false)
@@ -237,8 +216,7 @@ const outline = reactive({
   visible: false,
   novel: null as NovelDto | null,
   idea: '',
-  modelMode: 'builtin' as 'builtin' | 'custom',
-  modelConfigId: '',
+  model: { providerId: 'builtin' } as ModelSelectionValue,
   generating: false,
   saving: false,
   progress: 0,
@@ -252,10 +230,7 @@ const stylePackGroups = computed(() => [
 ])
 
 const canGenerate = computed(
-  () =>
-    !!outline.novel &&
-    !!outline.idea.trim() &&
-    (outline.modelMode === 'builtin' || !!outline.modelConfigId),
+  () => !!outline.novel && !!outline.idea.trim(),
 )
 
 let offProgress: (() => void) | undefined
@@ -277,10 +252,9 @@ onUnmounted(() => offProgress?.())
 async function load() {
   loading.value = true
   try {
-    ;[novels.value, stylePacks.value, modelConfigs.value] = await Promise.all([
+    ;[novels.value, stylePacks.value] = await Promise.all([
       get<NovelDto[]>('/api/novels'),
       get<StylePackDto[]>('/api/style-packs'),
-      get<ModelConfigDto[]>('/api/models/configs'),
     ])
 
     // 大纲生成插件的参数 schema（动态渲染表单，PRD 4.2）
@@ -334,8 +308,7 @@ async function remove(novel: NovelDto) {
 function openOutline(novel: NovelDto) {
   outline.novel = novel
   outline.idea = ''
-  outline.modelMode = 'builtin'
-  outline.modelConfigId = ''
+  outline.model = { providerId: 'builtin' }
   outline.progress = 0
   outline.progressMessage = ''
   outline.result = null
@@ -352,8 +325,9 @@ async function generateOutline() {
     outline.result = await post<GenerateOutlineResponse>('/api/writing/outline/generate', {
       novelId: outline.novel.id,
       idea: outline.idea.trim(),
-      providerId: outline.modelMode === 'builtin' ? 'builtin' : undefined,
-      modelConfigId: outline.modelMode === 'builtin' ? undefined : outline.modelConfigId,
+      providerId: outline.model.providerId,
+      modelConfigId: outline.model.modelConfigId,
+      modelName: outline.model.modelName,
       pluginConfig: { ...pluginConfig },
     })
     outline.progress = 100

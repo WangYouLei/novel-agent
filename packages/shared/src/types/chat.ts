@@ -55,10 +55,12 @@ export interface SendChatMessageRequest {
   attachment?: { name: string; text: string }
   /** 用户显式选择的插件 id：传入则直接调用该插件；不传则按常规对话处理 */
   pluginId?: string
-  /** 'builtin' = 内置模型（规则调度 + 执行计费）；其他 = 模型插件 id（LLM 调度） */
+  /** 'builtin' = 内置模型（规则调度 + 执行计费）；系统厂商预设 = 系统模型直连；其他 = 模型插件 id（LLM 调度） */
   providerId?: string
   /** providerId 非 builtin 时的模型配置 id */
   modelConfigId?: string
+  /** 系统模型直连时的模型名（providerId 为厂商预设且无 modelConfigId） */
+  modelName?: string
 }
 
 export interface SendChatMessageResponse {

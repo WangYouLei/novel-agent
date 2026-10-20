@@ -24,4 +24,9 @@ export class SendChatMessageRequestDto implements SendChatMessageRequest {
   @IsOptional()
   @IsString()
   modelConfigId?: string
+
+  /** 系统模型直连时的模型名（providerId 为厂商预设且无 modelConfigId） */
+  @IsOptional()
+  @IsString()
+  modelName?: string
 }

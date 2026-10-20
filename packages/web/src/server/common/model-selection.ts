@@ -17,8 +17,10 @@ export interface ModelSelectionDeps {
  * - modelConfigId 存在 → 用户自定义配置（解密注入连接参数）：
  *   - 系统厂商预设（openai/deepseek/qwen/glm）：固定能力直接可用，无需插件校验
  *   - 第三方模型插件：校验插件已安装/启用/运行后按插件路由
+ * - providerId 为系统厂商预设但无 modelConfigId → 系统模型直连
+ *   （平台 Key 由 model-service 的 SYSTEM_MODEL_KEYS 占位提供，不注入 providerConfig）
  * - 其余缺省情形（providerId 未传且无 modelConfigId）→ 统一走内置（语义对齐 chat 端）
- * - 显式传入非 builtin 的 providerId 但缺 modelConfigId → 400
+ * - 显式传入未知 providerId 且缺 modelConfigId → 400
  *
  * @throws BAD_REQUEST            显式自定义模型未选配置
  * @throws MODEL_CONFIG_INVALID   模型配置不存在
@@ -30,6 +32,7 @@ export async function resolveModelSelection(
   userId: string,
   providerId: string | undefined,
   modelConfigId: string | undefined,
+  modelName?: string,
 ): Promise<ModelSelection> {
   // 1. 显式内置
   if (providerId === 'builtin') {
@@ -95,6 +98,13 @@ export async function resolveModelSelection(
     return { providerId: 'builtin', model: 'mock-v1' }
   }
 
-  // 4. 显式指定了自定义 providerId 但未选配置
+  // 4. 系统模型直连：厂商预设 + 模型名，无用户配置
+  //    （不注入 providerConfig → ModelService 回落使用 SYSTEM_MODEL_KEYS 平台 Key 并计费）
+  const systemProvider = getSystemProvider(providerId)
+  if (systemProvider) {
+    return { providerId, model: modelName || systemProvider.defaultModel }
+  }
+
+  // 5. 显式指定了未知 providerId 且未选配置
   throw new BizError(ErrorCode.BAD_REQUEST, '使用自定义模型时必须选择模型配置')
 }

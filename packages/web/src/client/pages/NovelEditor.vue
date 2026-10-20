@@ -248,25 +248,7 @@
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>
-                <el-radio-group v-model="modelMode" size="small" :disabled="sending">
-                  <el-radio-button value="builtin">内置模型</el-radio-button>
-                  <el-radio-button value="custom" :disabled="!modelConfigs.length">自定义</el-radio-button>
-                </el-radio-group>
-                <el-select
-                  v-if="modelMode === 'custom'"
-                  v-model="modelConfigId"
-                  size="small"
-                  style="width: 180px"
-                  placeholder="选择模型配置"
-                  :disabled="sending"
-                >
-                  <el-option
-                    v-for="m in modelConfigs"
-                    :key="m.id"
-                    :label="`${m.name}（${m.modelName}）`"
-                    :value="m.id"
-                  />
-                </el-select>
+                <ModelPicker v-model="chatModel" :disabled="sending" size="small" width="220px" />
                 <div class="spacer" />
                 <span class="hint">Ctrl+Enter 发送</span>
                 <el-button type="primary" size="small" :loading="sending" :disabled="!canSend" @click="send">
@@ -292,6 +274,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { del, get, post, put } from '@/api/http'
 import type { Bridge } from '@/bridge'
+import ModelPicker, { type ModelSelectionValue } from '@/components/ModelPicker.vue'
 import { useAuthStore } from '@/stores/auth'
 import {
   LIMITS,
@@ -300,7 +283,6 @@ import {
   type ChatMessageDto,
   type ChatSessionDto,
   type GenerationProgressPayload,
-  type ModelConfigDto,
   type NovelDto,
   type OutlineStructure,
   type PluginDto,
@@ -353,9 +335,8 @@ const attachment = ref<{ name: string; text: string } | null>(null)
 const sending = ref(false)
 const progress = ref(0)
 const progressMessage = ref('')
-const modelConfigs = ref<ModelConfigDto[]>([])
-const modelMode = ref<'builtin' | 'custom'>('builtin')
-const modelConfigId = ref('')
+// 模型选择：内置免费或某个已保存配置；厂商直接列在 ModelPicker 下拉中
+const chatModel = ref<ModelSelectionValue>({ providerId: 'builtin' })
 const creatingSession = ref(false)
 const savingOutline = ref<Record<string, boolean>>({})
 
@@ -372,8 +353,7 @@ const stylePackGroups = computed(() => [
 ])
 
 const canSend = computed(
-  () => !!activeSession.value && (!!input.value.trim() || !!attachment.value) &&
-    (modelMode.value === 'builtin' || !!modelConfigId.value),
+  () => !!activeSession.value && (!!input.value.trim() || !!attachment.value),
 )
 
 /** 对话可调用的插件（功能/风格生成类，已启用且运行中） */
@@ -408,12 +388,11 @@ onMounted(async () => {
     })
   }
   try {
-    const [novelRes, packsRes, chaptersRes, sessionsRes, modelsRes, pluginsRes] = await Promise.allSettled([
+    const [novelRes, packsRes, chaptersRes, sessionsRes, pluginsRes] = await Promise.allSettled([
       get<NovelDto>(`/api/novels/${novelId}`),
       get<StylePackDto[]>('/api/style-packs'),
       get<ChapterDto[]>(`/api/novels/${novelId}/chapters`),
       get<ChatSessionDto[]>(`/api/chat/sessions?novelId=${novelId}`),
-      get<ModelConfigDto[]>('/api/models/configs'),
       get<PluginDto[]>('/api/plugins'),
     ])
     if (novelRes.status === 'rejected') throw novelRes.reason
@@ -431,7 +410,6 @@ onMounted(async () => {
       sessions.value = sessionsRes.value
       if (sessions.value.length > 0) await onSelectSession(sessions.value[0].id)
     }
-    if (modelsRes.status === 'fulfilled') modelConfigs.value = modelsRes.value
     if (pluginsRes.status === 'fulfilled') plugins.value = pluginsRes.value
   } catch (err) {
     ElMessage.error((err as Error).message)
@@ -620,10 +598,11 @@ async function send() {
       attachment: att ?? undefined,
       // 未选择插件 → 常规对话；选择了插件 → 服务端直接调用该插件
       pluginId: selectedPluginId.value || undefined,
-      // 内置模式显式传 'builtin'；自定义模式只传 modelConfigId，
+      // 内置模式显式传 'builtin'；系统模型传 providerId+modelName；自定义模式只传 modelConfigId，
       // providerId 由后端按配置解析（不硬编码插件 id，评审 L17）
-      providerId: modelMode.value === 'builtin' ? 'builtin' : undefined,
-      modelConfigId: modelMode.value === 'builtin' ? undefined : modelConfigId.value,
+      providerId: chatModel.value.providerId,
+      modelConfigId: chatModel.value.modelConfigId,
+      modelName: chatModel.value.modelName,
     })
     messages.value[messages.value.length - 1] = result.userMessage
     messages.value.push(result.assistantMessage)

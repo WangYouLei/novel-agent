@@ -5,10 +5,12 @@ export interface GenerateOutlineRequest {
   novelId: string
   /** 一句话创意 */
   idea: string
-  /** 'builtin' = 内置免费模型（消耗积分）；其他 = 模型插件 id（用户自己的 Key） */
+  /** 'builtin' = 内置免费模型（消耗积分）；系统厂商预设 = 系统模型直连（消耗积分）；其他 = 模型插件 id（用户自己的 Key） */
   providerId: string
   /** providerId 为模型插件时，用户模型配置 id */
   modelConfigId?: string
+  /** 系统模型直连时的模型名（providerId 为厂商预设且无 modelConfigId） */
+  modelName?: string
   /** 用户在 UI 上临时覆盖的插件参数（不改持久化配置） */
   pluginConfig?: Record<string, unknown>
 }

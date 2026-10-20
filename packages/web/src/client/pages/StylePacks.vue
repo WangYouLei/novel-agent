@@ -109,26 +109,8 @@
             placeholder="上传 .txt 文件自动填充，也可直接粘贴小说文本"
           />
         </el-form-item>
-        <el-form-item label="使用模型">
-          <el-radio-group v-model="gen.modelMode">
-            <el-radio value="builtin">内置免费模型</el-radio>
-            <el-radio value="custom" :disabled="modelConfigs.length === 0">
-              自定义模型{{ modelConfigs.length === 0 ? '（未配置）' : '' }}
-            </el-radio>
-          </el-radio-group>
-          <el-select
-            v-if="gen.modelMode === 'custom'"
-            v-model="gen.modelConfigId"
-            style="width: 100%; margin-top: 8px"
-            placeholder="选择模型配置"
-          >
-            <el-option
-              v-for="m in modelConfigs"
-              :key="m.id"
-              :label="`${m.name}（${m.modelName}）`"
-              :value="m.id"
-            />
-          </el-select>
+        <el-form-item label="模型选择">
+          <ModelPicker v-model="gen.model" />
         </el-form-item>
         <el-form-item v-if="gen.schema.length" label="提取参数">
           <div class="gen-config">
@@ -200,8 +182,8 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { del, get, post, put } from '@/api/http'
+import ModelPicker, { type ModelSelectionValue } from '@/components/ModelPicker.vue'
 import type {
-  ModelConfigDto,
   PluginConfigField,
   PluginDto,
   StylePackDto,
@@ -212,7 +194,6 @@ const packs = ref<StylePackDto[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const generating = ref(false)
-const modelConfigs = ref<ModelConfigDto[]>([])
 const fileInput = ref<HTMLInputElement>()
 
 const edit = reactive({
@@ -239,15 +220,12 @@ const gen = reactive({
   name: '',
   sourceText: '',
   fileName: '',
-  modelMode: 'builtin' as 'builtin' | 'custom',
-  modelConfigId: '',
+  model: { providerId: 'builtin' } as ModelSelectionValue,
   schema: [] as PluginConfigField[],
   pluginConfig: {} as Record<string, unknown>,
 })
 
-const canGenerate = computed(
-  () => gen.sourceText.trim().length > 0 && (gen.modelMode === 'builtin' || gen.modelConfigId),
-)
+const canGenerate = computed(() => gen.sourceText.trim().length > 0)
 
 onMounted(load)
 
@@ -266,22 +244,17 @@ function sourceName(type: StylePackSourceType): string {
   return type === 'BUILTIN' ? '内置' : type === 'USER_GENERATED' ? '我的' : '第三方'
 }
 
-/** 打开生成对话框：懒加载模型配置与插件参数 schema */
+/** 打开生成对话框：懒加载插件参数 schema */
 async function openGenerate() {
   gen.visible = true
   gen.name = ''
   gen.sourceText = ''
   gen.fileName = ''
-  gen.modelMode = 'builtin'
-  gen.modelConfigId = ''
+  gen.model = { providerId: 'builtin' }
   if (fileInput.value) fileInput.value.value = ''
-  if (modelConfigs.value.length === 0 && gen.schema.length === 0) {
+  if (gen.schema.length === 0) {
     try {
-      const [configs, plugins] = await Promise.all([
-        get<ModelConfigDto[]>('/api/models/configs'),
-        get<PluginDto[]>('/api/plugins'),
-      ])
-      modelConfigs.value = configs
+      const plugins = await get<PluginDto[]>('/api/plugins')
       const plugin = plugins.find((p) => p.pluginId === 'style-generator')
       if (plugin) {
         gen.schema = plugin.configSchema
@@ -318,8 +291,9 @@ async function generate() {
     const pack = await post<StylePackDto>('/api/style-packs/generate', {
       name: gen.name.trim() || undefined,
       sourceText: gen.sourceText,
-      providerId: gen.modelMode === 'builtin' ? 'builtin' : undefined,
-      modelConfigId: gen.modelMode === 'builtin' ? undefined : gen.modelConfigId,
+      providerId: gen.model.providerId,
+      modelConfigId: gen.model.modelConfigId,
+      modelName: gen.model.modelName,
       pluginConfig: { ...gen.pluginConfig },
     })
     ElMessage.success(`风格包「${pack.name}」已生成`)

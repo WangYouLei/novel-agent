@@ -84,9 +84,23 @@ describe('resolveModelSelection', () => {
     expect(deps.pluginRegistry.getByPluginId).toHaveBeenCalledWith('u1', 'custom-llm')
   })
 
-  it('providerId 显式传非 builtin 但缺 modelConfigId → 400', async () => {
+  it('系统模型直连：厂商预设（deepseek）+ modelName，无 modelConfigId → 不注入 providerConfig（平台 Key 由 model-service 提供）', async () => {
     const deps = makeDeps()
-    await expect(resolveModelSelection(deps, 'u1', 'deepseek', undefined)).rejects.toMatchObject({
+    const selection = await resolveModelSelection(deps, 'u1', 'deepseek', undefined, 'deepseek-chat')
+    expect(selection).toEqual({ providerId: 'deepseek', model: 'deepseek-chat' })
+    expect(deps.modelConfigService.getDecrypted).not.toHaveBeenCalled()
+    expect(deps.pluginRegistry.getByPluginId).not.toHaveBeenCalled()
+  })
+
+  it('系统模型直连未传 modelName → 回落厂商默认模型', async () => {
+    const deps = makeDeps()
+    const selection = await resolveModelSelection(deps, 'u1', 'deepseek', undefined)
+    expect(selection).toEqual({ providerId: 'deepseek', model: 'deepseek-chat' })
+  })
+
+  it('providerId 显式传未知厂商（非 builtin/系统预设）且缺 modelConfigId → 400', async () => {
+    const deps = makeDeps({ providerId: 'custom-llm' })
+    await expect(resolveModelSelection(deps, 'u1', 'custom-llm', undefined)).rejects.toMatchObject({
       name: 'BizError',
       code: ErrorCode.BAD_REQUEST,
     })

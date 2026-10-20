@@ -95,6 +95,7 @@ export class StylePackController {
       userId,
       body.providerId,
       body.modelConfigId,
+      body.modelName,
     )
     const mergedConfig = this.pluginRegistry.applyDefaults(
       runtime.manifest.configSchema,

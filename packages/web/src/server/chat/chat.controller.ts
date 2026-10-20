@@ -130,6 +130,7 @@ export class ChatController {
       userId,
       body.providerId,
       body.modelConfigId,
+      body.modelName,
     )
     const history = await this.chatService.recentMessages(userId, sessionId)
 

@@ -91,6 +91,7 @@ export class WritingController {
       userId,
       body.providerId,
       body.modelConfigId,
+      body.modelName,
     )
 
     // 4. 组装 FeatureRequest

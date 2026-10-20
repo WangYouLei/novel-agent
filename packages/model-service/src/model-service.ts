@@ -3,6 +3,7 @@ import type { ModelProvider, ModelResponse } from '@novelagent/core'
 import { SYSTEM_MODEL_PROVIDERS, getSystemProvider, type SystemModelProviderDto } from '@novelagent/shared'
 import { BizError, ErrorCode } from '@novelagent/shared'
 import type { BillingHook } from './billing-hook'
+import { SYSTEM_MODEL_KEYS } from './builtin/system-keys'
 import { BuiltinMockProvider } from './builtin/builtin-provider'
 import { chatWithOpenAICompat } from './builtin/openai-compat'
 
@@ -107,14 +108,26 @@ export class ModelService extends Service {
   }
 
   private async callBuiltin(request: ModelRequest, started: number): Promise<ModelCallResult> {
+    return this.callWithBilling(request, started, () => this.builtin.chat(request))
+  }
+
+  /**
+   * 平台付费调用统一计费：先扣费（余额不足阻止调用），失败退费
+   * （内置 mock 与系统模型共用；用户自己 Key 的调用不计费）
+   */
+  private async callWithBilling(
+    request: ModelRequest,
+    started: number,
+    call: () => Promise<ModelResponse>,
+  ): Promise<ModelCallResult> {
     if (!this.billingHook) {
-      throw new BizError(ErrorCode.MODEL_PROVIDER_MISSING, '计费服务未初始化，内置模型不可用')
+      throw new BizError(ErrorCode.MODEL_PROVIDER_MISSING, '计费服务未初始化，平台模型不可用')
     }
     const cost = this.billingHook.estimateCost(request)
     // 先扣费（余额不足在此抛出，阻止调用）
     await this.billingHook.charge(request, cost)
     try {
-      const response = await this.builtin.chat(request)
+      const response = await call()
       return { ...response, creditCost: cost, durationMs: Date.now() - started }
     } catch (err) {
       // 调用失败退费（文档 5.2）
@@ -128,6 +141,24 @@ export class ModelService extends Service {
     started: number,
   ): Promise<ModelCallResult> {
     const provider = getSystemProvider(request.providerId)!
+    // 未注入用户 Key → 系统模型（平台内置直连）：使用系统代码内占位 Key，按内置模型计费
+    if (!request.providerOptions?.apiKey) {
+      const systemKey = SYSTEM_MODEL_KEYS[request.providerId]
+      if (!systemKey) {
+        throw new BizError(
+          ErrorCode.MODEL_CONFIG_INVALID,
+          `系统模型 [${provider.providerName}] 尚未配置 API Key（请在 packages/model-service/src/builtin/system-keys.ts 中填写）`,
+        )
+      }
+      return this.callWithBilling(request, started, () =>
+        chatWithOpenAICompat(
+          { ...request, providerOptions: { ...request.providerOptions, apiKey: systemKey } },
+          provider.providerId,
+          provider.defaultBaseUrl,
+        ),
+      )
+    }
+    // 用户自己的 Key（自定义模型配置）→ 不计费
     const response = await chatWithOpenAICompat(request, provider.providerId, provider.defaultBaseUrl)
     return { ...response, creditCost: 0, durationMs: Date.now() - started }
   }
